@@ -1,6 +1,12 @@
 from pydantic import BaseModel
+from uuid import UUID
 
 class ArticleCreate(BaseModel):
+    title: str
+    content: str
+
+
+class ArticleUpdate(BaseModel):
     title: str
     content: str
 
