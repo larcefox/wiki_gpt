@@ -148,6 +148,7 @@ if page == "Создать статью":
             st.markdown("### Рекомендации")
             st.markdown(tips)
 
+
     if submitted:
         if not title.strip() or not content.strip():
             st.error("Заполните заголовок и текст.")
