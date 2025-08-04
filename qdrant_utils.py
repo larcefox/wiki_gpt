@@ -4,6 +4,10 @@ import requests
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, PointStruct, VectorParams
+from typing import List
+from sqlalchemy.orm import Session
+from models import Article
+from schemas import ArticleSearchHit
 
 load_dotenv()
 
@@ -48,12 +52,27 @@ def insert_vector(article_id: str, embedding: list[float]):
     )
 
 
-def search_vector(query_embedding: list[float]):
-    return client.search(
+def search_vector(vector: List[float], db: Session, limit: int = 5) -> List[ArticleSearchHit]:
+    hits = client.search(
         collection_name=COLLECTION_NAME,
-        query_vector=query_embedding,
-        limit=5
+        query_vector=vector,
+        limit=limit,
+        with_payload=True
     )
+
+    ids = [hit.id for hit in hits]
+    scores = {str(hit.id): hit.score for hit in hits}
+
+    articles = db.query(Article).filter(Article.id.in_(ids)).all()
+    return [
+        ArticleSearchHit(
+            id=str(a.id),
+            title=a.title,
+            content=a.content,
+            score=scores[str(a.id)]
+        )
+        for a in articles
+    ]
 
 def embed_text(text: str) -> list[float]:
     headers = {

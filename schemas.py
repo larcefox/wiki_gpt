@@ -8,3 +8,10 @@ class ArticleOut(BaseModel):
     id: str
     title: str
     content: str
+
+
+class ArticleSearchHit(BaseModel):
+    id: str
+    title: str
+    content: str
+    score: float
