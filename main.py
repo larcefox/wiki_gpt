@@ -75,7 +75,6 @@ def create_article(article: ArticleCreate, db: Session = Depends(get_db)):
         tags=db_article.tags.split(",") if db_article.tags else [],
     )
 
-
 @app.put("/articles/{article_id}", response_model=ArticleOut)
 def update_article(article_id: UUID, article: ArticleUpdate, db: Session = Depends(get_db)):
     db_article = db.query(Article).filter(Article.id == str(article_id)).first()
@@ -106,12 +105,46 @@ def get_article(article_id: UUID, db: Session = Depends(get_db)):
     db_article = db.query(Article).filter(Article.id == str(article_id)).first()
     if db_article is None:
         raise HTTPException(status_code=404, detail="Article not found")
+
     return ArticleOut(
         id=db_article.id,
         title=db_article.title,
         content=db_article.content,
         tags=db_article.tags.split(",") if db_article.tags else [],
     )
+
+
+@app.delete("/articles/{article_id}")
+def delete_article(article_id: UUID, db: Session = Depends(get_db)):
+    db_article = db.query(Article).filter(Article.id == str(article_id)).first()
+    if db_article is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    db.delete(db_article)
+    db.query(ArticleVersion).filter(ArticleVersion.article_id == str(article_id)).delete()
+    db.commit()
+    delete_vector(str(article_id))
+    return {"status": "deleted"}
+
+
+@app.get("/articles/{article_id}/history", response_model=List[ArticleVersionOut])
+def article_history(article_id: UUID, db: Session = Depends(get_db)):
+    versions = (
+        db.query(ArticleVersion)
+        .filter(ArticleVersion.article_id == str(article_id))
+        .order_by(ArticleVersion.created_at.desc())
+        .all()
+    )
+    return [
+        ArticleVersionOut(
+            id=v.id,
+            article_id=v.article_id,
+            title=v.title,
+            content=v.content,
+            tags=v.tags.split(",") if v.tags else [],
+            created_at=v.created_at.isoformat(),
+        )
+        for v in versions
+    ]
 
 
 @app.delete("/articles/{article_id}")
