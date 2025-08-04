@@ -75,6 +75,14 @@ def create_article(article: ArticleCreate, db: Session = Depends(get_db)):
         tags=db_article.tags.split(",") if db_article.tags else [],
     )
 
+
+    return ArticleOut(
+        id=db_article.id,
+        title=db_article.title,
+        content=db_article.content,
+        tags=db_article.tags.split(",") if db_article.tags else [],
+    )
+
 @app.put("/articles/{article_id}", response_model=ArticleOut)
 def update_article(article_id: UUID, article: ArticleUpdate, db: Session = Depends(get_db)):
     db_article = db.query(Article).filter(Article.id == str(article_id)).first()
@@ -105,7 +113,6 @@ def get_article(article_id: UUID, db: Session = Depends(get_db)):
     db_article = db.query(Article).filter(Article.id == str(article_id)).first()
     if db_article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-
     return ArticleOut(
         id=db_article.id,
         title=db_article.title,
@@ -146,7 +153,6 @@ def article_history(article_id: UUID, db: Session = Depends(get_db)):
         for v in versions
     ]
 
-
 @app.delete("/articles/{article_id}")
 def delete_article(article_id: UUID, db: Session = Depends(get_db)):
     db_article = db.query(Article).filter(Article.id == str(article_id)).first()
@@ -178,6 +184,7 @@ def article_history(article_id: UUID, db: Session = Depends(get_db)):
         )
         for v in versions
     ]
+
 
 
 @app.post("/articles/search/", response_model=List[ArticleSearchHit])

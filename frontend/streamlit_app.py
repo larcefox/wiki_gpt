@@ -133,7 +133,22 @@ if page == "Создать статью":
         title = st.text_input("Заголовок", "")
         tags = st.text_input("Теги (через запятую)", "")
         content = st.text_area("Текст статьи", height=300, placeholder="Содержимое в Markdown/тексте")
-        submitted = st.form_submit_button("Сохранить статью")
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            submitted = st.form_submit_button("Сохранить статью")
+        with col2:
+            rec_clicked = st.form_submit_button("Рекомендации (LLM)")
+
+    if rec_clicked:
+        if not title.strip() and not content.strip():
+            st.warning("Сначала заполни заголовок/текст.")
+        else:
+            with st.spinner("Генерирую рекомендации..."):
+                tips = llm_recommendations(title.strip(), content.strip())
+            st.markdown("### Рекомендации")
+            st.markdown(tips)
+
+
     if submitted:
         if not title.strip() or not content.strip():
             st.error("Заполните заголовок и текст.")
