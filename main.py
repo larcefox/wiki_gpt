@@ -1,15 +1,11 @@
-from fastapi import Depends, FastAPI
+from fastapi import Body, Depends, FastAPI
+from typing import List
 from sqlalchemy.orm import Session
 from db import SessionLocal, engine
 from models import Article, Base
 from qdrant_utils import (embed_text, ensure_collection, insert_vector,
                           search_vector)
-from schemas import ArticleCreate, ArticleOut
-from pydantic import BaseModel
-
-
-class SearchRequest(BaseModel):
-    q: str
+from schemas import ArticleCreate, ArticleOut, ArticleSearchHit
 
 Base.metadata.create_all(bind=engine)
 ensure_collection()
@@ -38,8 +34,7 @@ def create_article(article: ArticleCreate, db: Session = Depends(get_db)):
     return db_article
 
 
-@app.post("/articles/search/")
-def search_articles(req: SearchRequest):
-    query_embedding = embed_text(req.q)
-    hits = search_vector(query_embedding)
-    return hits
+@app.post("/articles/search/", response_model=List[ArticleSearchHit])
+def search_articles(q: str = Body(..., embed=True), db: Session = Depends(get_db)):
+    query_embedding = embed_text(q)
+    return search_vector(query_embedding, db=db)
