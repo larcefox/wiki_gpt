@@ -1,0 +1,278 @@
+import os
+import json
+import requests
+import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
+
+API_BASE = os.getenv("WIKI_API_BASE", "http://localhost:8000")
+YANDEX_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
+YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
+
+st.set_page_config(page_title="Wiki GPT – Frontend", layout="wide")
+
+
+# ---------------------------
+# Helpers
+# ---------------------------
+def api_post(path: str, payload: dict):
+    url = f"{API_BASE}{path}"
+    r = requests.post(url, json=payload, timeout=60)
+    if r.status_code >= 400:
+        raise RuntimeError(f"POST {path} failed: {r.status_code} {r.text}")
+    return r.json()
+
+def api_put(path: str, payload: dict):
+    url = f"{API_BASE}{path}"
+    r = requests.put(url, json=payload, timeout=60)
+    if r.status_code >= 400:
+        raise RuntimeError(f"PUT {path} failed: {r.status_code} {r.text}")
+    return r.json()
+
+def api_get(path: str):
+    url = f"{API_BASE}{path}"
+    r = requests.get(url, timeout=60)
+    if r.status_code >= 400:
+        raise RuntimeError(f"GET {path} failed: {r.status_code} {r.text}")
+    return r.json()
+
+def api_delete(path: str):
+    url = f"{API_BASE}{path}"
+    r = requests.delete(url, timeout=60)
+    if r.status_code >= 400:
+        raise RuntimeError(f"DELETE {path} failed: {r.status_code} {r.text}")
+    return r.json()
+
+def search_articles(query: str, tags=None):
+    payload = {"q": query}
+    if tags:
+        payload["tags"] = tags
+    return api_post("/articles/search/", payload)
+
+def create_article(title: str, content: str, tags):
+    return api_post("/articles/", {"title": title, "content": content, "tags": tags})
+
+def update_article(article_id: str, title: str, content: str, tags):
+    return api_put(f"/articles/{article_id}", {"title": title, "content": content, "tags": tags})
+
+def get_article(article_id: str):
+    return api_get(f"/articles/{article_id}")
+
+def delete_article(article_id: str):
+    return api_delete(f"/articles/{article_id}")
+
+def get_history(article_id: str):
+    return api_get(f"/articles/{article_id}/history")
+
+def suggest_related(title: str, content: str, exclude_id: str | None = None, top_k: int = 5):
+    results = search_articles(f"{title}\n{content}")
+    unique = []
+    for hit in results:
+        if exclude_id and hit["id"] == exclude_id:
+            continue
+        unique.append(hit)
+    return unique[:top_k]
+
+def llm_recommendations(title: str, content: str) -> str:
+    if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
+        return "LLM выключен: не заданы YANDEX_OAUTH_TOKEN / YANDEX_FOLDER_ID."
+
+    url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+    headers = {
+        "Authorization": f"Bearer {YANDEX_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    prompt = (
+        "Ты – редактор и техписатель. Дай практичные рекомендации по улучшению статьи: "
+        "структура, ясность, недостающие разделы, теги. Пиши кратко и по пунктам.\n\n"
+        f"Заголовок: {title}\n\n"
+        f"Текст статьи:\n{content}\n\n"
+        "Ответ формируй в формате маркдаун-списка."
+    )
+
+    payload = {
+        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite/latest",
+        "completionOptions": {"stream": False, "temperature": 0.2, "maxTokens": 400},
+        "messages": [
+            {"role": "system", "text": "Ты помогаешь улучшать статьи в базе знаний."},
+            {"role": "user", "text": prompt},
+        ],
+    }
+
+    r = requests.post(url, headers=headers, json=payload, timeout=90)
+    if r.status_code != 200:
+        return f"Ошибка LLM: {r.status_code} {r.text}"
+
+    data = r.json()
+    alternatives = data.get("result", {}).get("alternatives") or data.get("alternatives")
+    if alternatives:
+        text = alternatives[0].get("message", {}).get("text", "").strip()
+        if text:
+            return text
+    return "Не удалось распарсить ответ LLM:\n\n" + json.dumps(data, ensure_ascii=False, indent=2)
+
+
+# ---------------------------
+# UI
+# ---------------------------
+st.sidebar.title("Wiki GPT")
+page = st.sidebar.radio(
+    "Навигация",
+    ["Создать статью", "Редактировать статью", "Поиск", "Статья по ID", "Диагностика"],
+)
+
+st.sidebar.markdown("---")
+st.sidebar.caption(f"Backend: {API_BASE}")
+
+# --- Создать ---
+if page == "Создать статью":
+    st.header("Создать статью")
+    with st.form("create_form"):
+        title = st.text_input("Заголовок", "")
+        tags = st.text_input("Теги (через запятую)", "")
+        content = st.text_area("Текст статьи", height=300, placeholder="Содержимое в Markdown/тексте")
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            submitted = st.form_submit_button("Сохранить статью")
+        with col2:
+            rec_clicked = st.form_submit_button("Рекомендации (LLM)")
+
+    if rec_clicked:
+        if not title.strip() and not content.strip():
+            st.warning("Сначала заполни заголовок/текст.")
+        else:
+            with st.spinner("Генерирую рекомендации..."):
+                tips = llm_recommendations(title.strip(), content.strip())
+            st.markdown("### Рекомендации")
+            st.markdown(tips)
+
+    if submitted:
+        if not title.strip() or not content.strip():
+            st.error("Заполните заголовок и текст.")
+        else:
+            try:
+                tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+                res = create_article(title.strip(), content.strip(), tag_list)
+                st.success(f"Создано! ID: {res['id']}")
+                with st.expander("Похожие статьи сразу после сохранения"):
+                    related = suggest_related(title, content, exclude_id=res['id'], top_k=5)
+                    for hit in related:
+                        st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
+                        st.caption(f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}")
+                        st.write(hit["content"])
+                        st.markdown("---")
+            except Exception as e:
+                st.error(str(e))
+
+# --- Редактировать ---
+elif page == "Редактировать статью":
+    st.header("Редактировать статью")
+    st.caption("Укажи ID статьи (можно взять из результата создания/поиска).")
+    article_id = st.text_input("Article ID", "")
+    title = st.text_input("Новый заголовок", "")
+    tags = st.text_input("Новые теги (через запятую)", "")
+    content = st.text_area("Новый текст статьи", height=300)
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("Сохранить изменения"):
+            if not article_id.strip():
+                st.error("Укажи ID статьи.")
+            elif not title.strip() or not content.strip():
+                st.error("Заполни заголовок и текст.")
+            else:
+                try:
+                    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+                    res = update_article(article_id.strip(), title.strip(), content.strip(), tag_list)
+                    st.success(f"Обновлено: {res['id']}")
+                except Exception as e:
+                    st.error(str(e))
+    with col2:
+        if st.button("Рекомендации к статье (LLM)"):
+            if not title.strip() and not content.strip():
+                st.warning("Сначала заполни заголовок/текст.")
+            else:
+                with st.spinner("Генерирую рекомендации..."):
+                    tips = llm_recommendations(title.strip(), content.strip())
+                st.markdown("### Рекомендации")
+                st.markdown(tips)
+
+    st.markdown("---")
+    if st.button("Найти похожие статьи"):
+        if not title.strip() and not content.strip():
+            st.warning("Сначала заполни заголовок/текст — по ним ищем похожие.")
+        else:
+            related = suggest_related(title, content, exclude_id=article_id.strip(), top_k=10)
+            st.subheader("Похожие статьи")
+            for hit in related:
+                st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
+                st.caption(f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}")
+                st.write(hit["content"])
+                st.markdown("---")
+
+# --- Поиск ---
+elif page == "Поиск":
+    st.header("Поиск по базе знаний")
+    q = st.text_input("Запрос", placeholder="например: YandexGPT эмбеддинги")
+    tags_filter = st.text_input("Фильтр по тегам (через запятую)", "")
+    topk = st.slider("Сколько результатов показать", 1, 20, 5)
+    if st.button("Искать") and q.strip():
+        try:
+            tag_list = [t.strip() for t in tags_filter.split(",") if t.strip()]
+            results = search_articles(q.strip(), tag_list)[:topk]
+            st.subheader("Результаты")
+            for hit in results:
+                st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
+                st.caption(f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}")
+                st.write(hit["content"])
+                st.markdown("---")
+        except Exception as e:
+            st.error(str(e))
+
+# --- Статья по ID ---
+elif page == "Статья по ID":
+    st.header("Статья по ID")
+    with st.form("view_form"):
+        view_id = st.text_input("Article ID", value=st.session_state.get("view_id", ""))
+        submitted = st.form_submit_button("Загрузить")
+    if submitted and view_id.strip():
+        try:
+            st.session_state.view_id = view_id.strip()
+            st.session_state.view_article = get_article(view_id.strip())
+            st.session_state.view_history = get_history(view_id.strip())
+        except Exception as e:
+            st.error(str(e))
+    article = st.session_state.get("view_article")
+    if article:
+        tabs = st.tabs(["Статья", "История"])
+        with tabs[0]:
+            st.subheader(article["title"])
+            st.write(article["content"])
+            st.caption(f"Теги: {', '.join(article.get('tags', []))}")
+            if st.button("Удалить статью"):
+                try:
+                    delete_article(article["id"])
+                    st.success("Удалено")
+                    st.session_state.view_article = None
+                    st.session_state.view_history = None
+                except Exception as e:
+                    st.error(str(e))
+        with tabs[1]:
+            history = st.session_state.get("view_history", [])
+            if history:
+                st.table(history)
+            else:
+                st.info("История пуста")
+
+# --- Диагностика ---
+else:
+    st.header("Диагностика")
+    st.write("Проверка окружения:")
+    st.json({
+        "API_BASE": API_BASE,
+        "YANDEX_OAUTH_TOKEN": bool(YANDEX_TOKEN),
+        "YANDEX_FOLDER_ID": YANDEX_FOLDER_ID or "",
+    })
+    st.caption("Если LLM выключен — рекомендации и рерэнк будут недоступны.")
