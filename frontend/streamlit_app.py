@@ -231,20 +231,36 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
 # Auth & UI
 # ---------------------------
 if "access_token" not in st.session_state:
-    st.header("Вход")
-    with st.form("login_form"):
-        email = st.text_input("Email")
-        password = st.text_input("Пароль", type="password")
-        submitted = st.form_submit_button("Войти")
-    if submitted:
-        try:
-            data = api_post("/auth/login", {"email": email, "password": password})
-            st.session_state["access_token"] = data["access_token"]
-            st.session_state["refresh_token"] = data["refresh_token"]
-            st.session_state["user"] = api_get("/auth/me")
-            st.experimental_rerun()
-        except Exception as e:
-            st.error(str(e))
+    tab_login, tab_register = st.tabs(["Вход", "Регистрация"])
+    with tab_login:
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Пароль", type="password")
+            submitted = st.form_submit_button("Войти")
+        if submitted:
+            try:
+                data = api_post("/auth/login", {"email": email, "password": password})
+                st.session_state["access_token"] = data["access_token"]
+                st.session_state["refresh_token"] = data["refresh_token"]
+                st.session_state["user"] = api_get("/auth/me")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(str(e))
+
+    with tab_register:
+        with st.form("register_form"):
+            r_email = st.text_input("Email", key="reg_email")
+            r_password = st.text_input("Пароль", type="password", key="reg_password")
+            r_submitted = st.form_submit_button("Зарегистрироваться")
+        if r_submitted:
+            try:
+                data = api_post("/auth/register", {"email": r_email, "password": r_password})
+                st.session_state["access_token"] = data["access_token"]
+                st.session_state["refresh_token"] = data["refresh_token"]
+                st.session_state["user"] = api_get("/auth/me")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(str(e))
     st.stop()
 
 if "user" not in st.session_state:

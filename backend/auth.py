@@ -8,15 +8,17 @@ import jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from collections import deque
+from uuid import UUID as UUID_cls
 
 from db import get_db, SessionLocal
-from models import User, Role, UserRole
+from models import User, Role, UserRole, Team
 from schemas import (
     UserCreate,
     LoginRequest,
     Token,
     RefreshTokenRequest,
     UserOut,
+    RegisterResponse,
 )
 
 SECRET_KEY = os.getenv("JWT_SECRET", "secret")
@@ -73,7 +75,8 @@ def get_current_user(
             raise credentials_exception
     except jwt.PyJWTError:
         raise credentials_exception
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = UUID_cls(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if user is None or not user.is_active:
         raise credentials_exception
     return user
@@ -89,27 +92,41 @@ def require_roles(required_roles: List[str]):
     return role_checker
 
 
-@router.post("/register", response_model=UserOut)
+@router.post("/register", response_model=RegisterResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
-    db_user = User(email=user.email, password_hash=get_password_hash(user.password))
+
+    team = Team(name=f"Team of {user.email}")
+    db.add(team)
+    db.flush()
+
+    db_user = User(
+        email=user.email,
+        password_hash=get_password_hash(user.password),
+        team_id=team.id,
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
 
-    reader_role = db.query(Role).filter(Role.code == "reader").first()
-    if reader_role:
-        db.add(UserRole(user_id=db_user.id, role_code=reader_role.code))
-        db.commit()
-        db.refresh(db_user)
+    for code in ["author", "reader"]:
+        role = db.query(Role).filter(Role.code == code).first()
+        if role:
+            db.add(UserRole(user_id=db_user.id, role_code=role.code))
+    db.commit()
+    db.refresh(db_user)
 
-    return UserOut(
-        id=db_user.id,
+    access = create_access_token(db_user)
+    refresh = create_refresh_token(db_user)
+
+    return RegisterResponse(
+        user_id=db_user.id,
         email=db_user.email,
-        is_active=db_user.is_active,
-        roles=[r.code for r in db_user.roles],
+        team_id=db_user.team_id,
+        access_token=access,
+        refresh_token=refresh,
     )
 
 

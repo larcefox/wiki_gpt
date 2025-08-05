@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, constr
 from uuid import UUID
 from typing import List, Optional
 
@@ -63,7 +63,7 @@ class ArticleGroupOut(BaseModel):
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
+    password: constr(min_length=8)
 
 
 class LoginRequest(BaseModel):
@@ -89,3 +89,11 @@ class UserOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class RegisterResponse(BaseModel):
+    user_id: UUID
+    email: EmailStr
+    team_id: UUID
+    access_token: str
+    refresh_token: str

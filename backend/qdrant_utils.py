@@ -70,12 +70,12 @@ def delete_vector(article_id: str):
     client.delete(collection_name=COLLECTION_NAME, points_selector=[article_id])
 
 
-def search_vector(vector: List[float], db: Session, limit: int = 5) -> List[ArticleSearchHit]:
+def search_vector(vector: List[float], db: Session, team_id, limit: int = 5) -> List[ArticleSearchHit]:
     hits = client.search(
         collection_name=COLLECTION_NAME,
         query_vector=vector,
         limit=limit,
-        with_payload=True
+        with_payload=True,
     )
 
     ids = [UUID_cls(str(hit.id)) for hit in hits]
@@ -83,7 +83,11 @@ def search_vector(vector: List[float], db: Session, limit: int = 5) -> List[Arti
 
     articles = (
         db.query(Article)
-        .filter(Article.id.in_(ids), Article.is_deleted == False)
+        .filter(
+            Article.id.in_(ids),
+            Article.is_deleted == False,
+            Article.team_id == team_id,
+        )
         .all()
     )
     return [

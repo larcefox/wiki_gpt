@@ -31,17 +31,24 @@ Base.metadata.create_all(bind=engine)
 def ensure_columns():
     inspector = inspect(engine)
     with engine.begin() as conn:
+        user_cols = [c["name"] for c in inspector.get_columns("users")]
+        if "team_id" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN team_id UUID"))
+
         article_cols = [c["name"] for c in inspector.get_columns("articles")]
         if "tags" not in article_cols:
             conn.execute(text("ALTER TABLE articles ADD COLUMN tags TEXT DEFAULT ''"))
         if "group_id" not in article_cols:
             conn.execute(text("ALTER TABLE articles ADD COLUMN group_id UUID"))
+        if "team_id" not in article_cols:
+            conn.execute(text("ALTER TABLE articles ADD COLUMN team_id UUID"))
         if "is_deleted" not in article_cols:
             conn.execute(
                 text(
                     "ALTER TABLE articles ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE"
                 )
             )
+
         version_cols = [c["name"] for c in inspector.get_columns("article_versions")]
         if "tags" not in version_cols:
             conn.execute(
@@ -83,7 +90,14 @@ def list_articles(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(["reader"])),
 ):
-    articles = db.query(Article).filter(Article.is_deleted == False).all()
+    articles = (
+        db.query(Article)
+        .filter(
+            Article.is_deleted == False,
+            Article.team_id == current_user.team_id,
+        )
+        .all()
+    )
     return [
         ArticleOut(
             id=a.id,
@@ -107,6 +121,7 @@ def create_article(
         content=article.content,
         tags=",".join(article.tags),
         group_id=article.group_id,
+        team_id=current_user.team_id,
     )
     db.add(db_article)
     db.commit()
@@ -134,7 +149,11 @@ def update_article(
 ):
     db_article = (
         db.query(Article)
-        .filter(Article.id == article_id, Article.is_deleted == False)
+        .filter(
+            Article.id == article_id,
+            Article.is_deleted == False,
+            Article.team_id == current_user.team_id,
+        )
         .first()
     )
     if db_article is None:
@@ -169,7 +188,11 @@ def get_article(
 ):
     db_article = (
         db.query(Article)
-        .filter(Article.id == article_id, Article.is_deleted == False)
+        .filter(
+            Article.id == article_id,
+            Article.is_deleted == False,
+            Article.team_id == current_user.team_id,
+        )
         .first()
     )
     if db_article is None:
@@ -191,7 +214,11 @@ def delete_article(
 ):
     db_article = (
         db.query(Article)
-        .filter(Article.id == article_id, Article.is_deleted == False)
+        .filter(
+            Article.id == article_id,
+            Article.is_deleted == False,
+            Article.team_id == current_user.team_id,
+        )
         .first()
     )
     if db_article is None:
@@ -208,6 +235,17 @@ def article_history(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(["reader"])),
 ):
+    article_exists = (
+        db.query(Article)
+        .filter(
+            Article.id == article_id,
+            Article.team_id == current_user.team_id,
+            Article.is_deleted == False,
+        )
+        .first()
+    )
+    if not article_exists:
+        raise HTTPException(status_code=404, detail="Article not found")
     versions = (
         db.query(ArticleVersion)
         .filter(ArticleVersion.article_id == article_id)
@@ -235,7 +273,7 @@ def search_articles(
     current_user=Depends(require_roles(["reader"])),
 ):
     query_embedding = embed_text(query.q)
-    hits = search_vector(query_embedding, db=db)
+    hits = search_vector(query_embedding, db=db, team_id=current_user.team_id)
     if query.tags:
         required = set(query.tags)
         hits = [h for h in hits if required.issubset(set(h.tags))]
