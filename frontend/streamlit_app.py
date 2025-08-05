@@ -1,14 +1,23 @@
 import os
 import json
+import threading
+import logging
 import requests
 import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def _env_or_secret(key: str) -> str | None:
+    value = (os.getenv(key) or st.secrets.get(key, "")).strip()
+    return value or None
+
 API_BASE = os.getenv("WIKI_API_BASE", "http://localhost:8000")
-YANDEX_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
-YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
+YANDEX_TOKEN = _env_or_secret("YANDEX_OAUTH_TOKEN")
+YANDEX_FOLDER_ID = _env_or_secret("YANDEX_FOLDER_ID")
 
 st.set_page_config(page_title="Wiki GPT – Frontend", layout="wide")
 
@@ -89,7 +98,8 @@ def llm_recommendations(title: str, content: str) -> str:
         "структура, ясность, недостающие разделы, теги. Пиши кратко и по пунктам.\n\n"
         f"Заголовок: {title}\n\n"
         f"Текст статьи:\n{content}\n\n"
-        "Ответ формируй в формате маркдаун-списка."
+        "Ответ формируй в формате маркдаун-списка, каждый пункт начинай с одной из пометок: "
+        "[структура], [пробелы в фактах], [предложенные теги]."
     )
 
     payload = {
@@ -101,8 +111,14 @@ def llm_recommendations(title: str, content: str) -> str:
         ],
     }
 
-    r = requests.post(url, headers=headers, json=payload, timeout=90)
+    logger.info("LLM request: title=%s content_len=%d", title, len(content))
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=90)
+    except Exception as e:
+        logger.exception("LLM request failed")
+        return f"Ошибка LLM: {e}"
     if r.status_code != 200:
+        logger.error("LLM error %s: %s", r.status_code, r.text)
         return f"Ошибка LLM: {r.status_code} {r.text}"
 
     data = r.json()
@@ -110,7 +126,9 @@ def llm_recommendations(title: str, content: str) -> str:
     if alternatives:
         text = alternatives[0].get("message", {}).get("text", "").strip()
         if text:
+            logger.info("LLM response received, %d chars", len(text))
             return text
+    logger.warning("LLM response parsing failed")
     return "Не удалось распарсить ответ LLM:\n\n" + json.dumps(data, ensure_ascii=False, indent=2)
 
 
@@ -129,43 +147,100 @@ st.sidebar.caption(f"Backend: {API_BASE}")
 # --- Создать ---
 if page == "Создать статью":
     st.header("Создать статью")
-    with st.form("create_form"):
-        title = st.text_input("Заголовок", "")
-        tags = st.text_input("Теги (через запятую)", "")
-        content = st.text_area("Текст статьи", height=300, placeholder="Содержимое в Markdown/тексте")
+    main_col, rec_col = st.columns([3, 2])
+
+    if "create_title" not in st.session_state:
+        st.session_state.create_title = ""
+    if "create_tags" not in st.session_state:
+        st.session_state.create_tags = ""
+    if "create_content" not in st.session_state:
+        st.session_state.create_content = ""
+    if "llm_tips" not in st.session_state:
+        st.session_state.llm_tips = ""
+    if "llm_timer" not in st.session_state:
+        st.session_state.llm_timer = None
+
+    def schedule_llm() -> None:
+        if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
+            logger.debug("LLM disabled, skipping schedule")
+            return
+        if st.session_state.llm_timer:
+            st.session_state.llm_timer.cancel()
+
+        def run():
+            title = st.session_state.create_title.strip()
+            content = st.session_state.create_content.strip()
+            if not title and not content:
+                st.session_state.llm_tips = ""
+            else:
+                logger.info("Auto-updating LLM recommendations")
+                st.session_state.llm_tips = llm_recommendations(title, content)
+            st.rerun()
+
+        st.session_state.llm_timer = threading.Timer(1.5, run)
+        st.session_state.llm_timer.start()
+
+    with main_col:
+        st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
+        st.text_input("Теги (через запятую)", key="create_tags")
+        st.text_area(
+            "Текст статьи",
+            height=300,
+            placeholder="Содержимое в Markdown/тексте",
+            key="create_content",
+            on_change=schedule_llm,
+        )
         col1, col2 = st.columns([1, 1])
         with col1:
-            submitted = st.form_submit_button("Сохранить статью")
+            if st.button("Сохранить статью"):
+                title_val = st.session_state.create_title.strip()
+                content_val = st.session_state.create_content.strip()
+                if not title_val or not content_val:
+                    st.error("Заполните заголовок и текст.")
+                else:
+                    try:
+                        tag_list = [
+                            t.strip()
+                            for t in st.session_state.create_tags.split(",")
+                            if t.strip()
+                        ]
+                        res = create_article(title_val, content_val, tag_list)
+                        st.success(f"Создано! ID: {res['id']}")
+                        with st.expander("Похожие статьи сразу после сохранения"):
+                            related = suggest_related(
+                                title_val, content_val, exclude_id=res['id'], top_k=5
+                            )
+                            for hit in related:
+                                st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
+                                st.caption(
+                                    f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}"
+                                )
+                                st.write(hit["content"])
+                                st.markdown("---")
+                    except Exception as e:
+                        st.error(str(e))
         with col2:
-            rec_clicked = st.form_submit_button("Рекомендации (LLM)")
+            if st.button("Рекомендации (LLM)"):
+                title_val = st.session_state.create_title.strip()
+                content_val = st.session_state.create_content.strip()
+                if not title_val and not content_val:
+                    st.warning("Сначала заполни заголовок/текст.")
+                else:
+                    with st.spinner("Генерирую рекомендации..."):
+                        logger.info("Manual LLM request")
+                        st.session_state.llm_tips = llm_recommendations(title_val, content_val)
+                    st.rerun()
 
-    if rec_clicked:
-        if not title.strip() and not content.strip():
-            st.warning("Сначала заполни заголовок/текст.")
+    with rec_col:
+        st.markdown("### Рекомендации ИИ")
+        if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
+            st.info("LLM выключен: не заданы YANDEX_OAUTH_TOKEN / YANDEX_FOLDER_ID.")
         else:
-            with st.spinner("Генерирую рекомендации..."):
-                tips = llm_recommendations(title.strip(), content.strip())
-            st.markdown("### Рекомендации")
-            st.markdown(tips)
-
-
-    if submitted:
-        if not title.strip() or not content.strip():
-            st.error("Заполните заголовок и текст.")
-        else:
-            try:
-                tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-                res = create_article(title.strip(), content.strip(), tag_list)
-                st.success(f"Создано! ID: {res['id']}")
-                with st.expander("Похожие статьи сразу после сохранения"):
-                    related = suggest_related(title, content, exclude_id=res['id'], top_k=5)
-                    for hit in related:
-                        st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
-                        st.caption(f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}")
-                        st.write(hit["content"])
-                        st.markdown("---")
-            except Exception as e:
-                st.error(str(e))
+            tips = st.session_state.get("llm_tips", "")
+            if tips:
+                st.markdown(tips)
+            else:
+                st.caption("Начните ввод, чтобы получить рекомендации.")
 
 # --- Редактировать ---
 elif page == "Редактировать статью":
@@ -196,6 +271,7 @@ elif page == "Редактировать статью":
                 st.warning("Сначала заполни заголовок/текст.")
             else:
                 with st.spinner("Генерирую рекомендации..."):
+                    logger.info("Manual LLM request on edit page")
                     tips = llm_recommendations(title.strip(), content.strip())
                 st.markdown("### Рекомендации")
                 st.markdown(tips)
