@@ -3,6 +3,7 @@ from uuid import UUID
 from typing import List
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from db import SessionLocal, engine
 from models import Article, ArticleVersion, ArticleGroup, Base
 from qdrant_utils import (
@@ -30,21 +31,59 @@ Base.metadata.create_all(bind=engine)
 def ensure_columns():
     inspector = inspect(engine)
     with engine.begin() as conn:
-        article_cols = [c["name"] for c in inspector.get_columns("articles")]
+        article_cols = {c["name"]: c for c in inspector.get_columns("articles")}
         if "tags" not in article_cols:
             conn.execute(text("ALTER TABLE articles ADD COLUMN tags TEXT DEFAULT ''"))
-        if "group_id" not in article_cols:
+        id_col = article_cols.get("id")
+        if id_col and not isinstance(id_col["type"], PG_UUID):
+            conn.execute(
+                text(
+                    "ALTER TABLE articles ALTER COLUMN id TYPE UUID USING id::UUID"
+                )
+            )
+        group_col = article_cols.get("group_id")
+        if group_col is None:
             conn.execute(text("ALTER TABLE articles ADD COLUMN group_id UUID"))
+        elif not isinstance(group_col["type"], PG_UUID):
+            conn.execute(
+                text(
+                    "ALTER TABLE articles ALTER COLUMN group_id TYPE UUID USING group_id::UUID"
+                )
+            )
         if "is_deleted" not in article_cols:
             conn.execute(
                 text(
-                    "ALTER TABLE articles ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE"
+                    "ALTER TABLE articles ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE",
                 )
             )
-        version_cols = [c["name"] for c in inspector.get_columns("article_versions")]
+
+        version_cols = {c["name"]: c for c in inspector.get_columns("article_versions")}
         if "tags" not in version_cols:
             conn.execute(
                 text("ALTER TABLE article_versions ADD COLUMN tags TEXT DEFAULT ''")
+            )
+        id_col = version_cols.get("id")
+        if id_col and not isinstance(id_col["type"], PG_UUID):
+            conn.execute(
+                text(
+                    "ALTER TABLE article_versions ALTER COLUMN id TYPE UUID USING id::UUID"
+                )
+            )
+        article_id_col = version_cols.get("article_id")
+        if article_id_col and not isinstance(article_id_col["type"], PG_UUID):
+            conn.execute(
+                text(
+                    "ALTER TABLE article_versions ALTER COLUMN article_id TYPE UUID USING article_id::UUID"
+                )
+            )
+
+        group_cols = {c["name"]: c for c in inspector.get_columns("article_groups")}
+        id_col = group_cols.get("id")
+        if id_col and not isinstance(id_col["type"], PG_UUID):
+            conn.execute(
+                text(
+                    "ALTER TABLE article_groups ALTER COLUMN id TYPE UUID USING id::UUID"
+                )
             )
 
 
