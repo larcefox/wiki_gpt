@@ -24,7 +24,7 @@ services:
       - qdrant_storage:/qdrant/storage
 
   backend:
-    build: .
+    build: ./backend
     container_name: wiki_backend
     restart: always
     ports:
@@ -34,6 +34,17 @@ services:
       - qdrant
     env_file:
       - .env
+
+  frontend:
+    build: ./frontend
+    container_name: wiki_frontend
+    restart: always
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    environment:
+      - WIKI_API_BASE=http://backend:8000
 
 volumes:
   pgdata:
