@@ -164,8 +164,9 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             <button onclick=\"insertTable()\">Таблица</button>
         </div>
         <script>
-        const textarea = window.parent.document.querySelector(`textarea[aria-label={label_json}]`);
-        function surround(prefix, suffix) {{
+        const getTextarea = () => window.parent.document.querySelector(`textarea[aria-label={label_json}]`);
+        window.surround = function(prefix, suffix) {{
+            const textarea = getTextarea();
             if (!textarea) return;
             prefix = prefix.replace(/\\\\n/g, '\n');
             suffix = suffix.replace(/\\\\n/g, '\n');
@@ -180,7 +181,8 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             textarea.selectionEnd = start + prefix.length + selected.length;
             textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
         }}
-        function insertTable() {{
+        window.insertTable = function() {{
+            const textarea = getTextarea();
             if (!textarea) return;
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
