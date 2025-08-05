@@ -8,6 +8,34 @@ import uuid
 Base = declarative_base()
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+    roles = relationship("Role", secondary="user_roles", back_populates="users")
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String, unique=True, nullable=False)
+
+    users = relationship("User", secondary="user_roles", back_populates="roles")
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    role_code = Column(String, ForeignKey("roles.code"), primary_key=True)
+
+
 class ArticleGroup(Base):
     __tablename__ = "article_groups"
 

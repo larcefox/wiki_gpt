@@ -3,8 +3,9 @@ from uuid import UUID
 from typing import List
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text
-from db import SessionLocal, engine
+from db import get_db, SessionLocal, engine
 from models import Article, ArticleVersion, ArticleGroup, Base
+from auth import router as auth_router, require_roles, init_roles
 from qdrant_utils import (
     embed_text,
     ensure_collection,
@@ -50,20 +51,18 @@ def ensure_columns():
 
 ensure_columns()
 ensure_collection()
+init_roles()
 
 app = FastAPI()
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+app.include_router(auth_router, prefix="/auth")
 
 
 @app.post("/groups/", response_model=ArticleGroupOut)
-def create_group(group: ArticleGroupCreate, db: Session = Depends(get_db)):
+def create_group(
+    group: ArticleGroupCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["admin"])),
+):
     db_group = ArticleGroup(name=group.name, description=group.description)
     db.add(db_group)
     db.commit()
@@ -72,12 +71,18 @@ def create_group(group: ArticleGroupCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/groups/", response_model=List[ArticleGroupOut])
-def list_groups(db: Session = Depends(get_db)):
+def list_groups(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
     return db.query(ArticleGroup).all()
 
 
 @app.get("/articles/", response_model=List[ArticleOut])
-def list_articles(db: Session = Depends(get_db)):
+def list_articles(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
     articles = db.query(Article).filter(Article.is_deleted == False).all()
     return [
         ArticleOut(
@@ -92,7 +97,11 @@ def list_articles(db: Session = Depends(get_db)):
 
 
 @app.post("/articles/", response_model=ArticleOut)
-def create_article(article: ArticleCreate, db: Session = Depends(get_db)):
+def create_article(
+    article: ArticleCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["author"])),
+):
     db_article = Article(
         title=article.title,
         content=article.content,
@@ -117,7 +126,12 @@ def create_article(article: ArticleCreate, db: Session = Depends(get_db)):
     )
 
 @app.put("/articles/{article_id}", response_model=ArticleOut)
-def update_article(article_id: UUID, article: ArticleUpdate, db: Session = Depends(get_db)):
+def update_article(
+    article_id: UUID,
+    article: ArticleUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["author"])),
+):
     db_article = (
         db.query(Article)
         .filter(Article.id == article_id, Article.is_deleted == False)
@@ -148,7 +162,11 @@ def update_article(article_id: UUID, article: ArticleUpdate, db: Session = Depen
 
 
 @app.get("/articles/{article_id}", response_model=ArticleOut)
-def get_article(article_id: UUID, db: Session = Depends(get_db)):
+def get_article(
+    article_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
     db_article = (
         db.query(Article)
         .filter(Article.id == article_id, Article.is_deleted == False)
@@ -166,7 +184,11 @@ def get_article(article_id: UUID, db: Session = Depends(get_db)):
 
 
 @app.delete("/articles/{article_id}")
-def delete_article(article_id: UUID, db: Session = Depends(get_db)):
+def delete_article(
+    article_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["author"])),
+):
     db_article = (
         db.query(Article)
         .filter(Article.id == article_id, Article.is_deleted == False)
@@ -181,7 +203,11 @@ def delete_article(article_id: UUID, db: Session = Depends(get_db)):
 
 
 @app.get("/articles/{article_id}/history", response_model=List[ArticleVersionOut])
-def article_history(article_id: UUID, db: Session = Depends(get_db)):
+def article_history(
+    article_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
     versions = (
         db.query(ArticleVersion)
         .filter(ArticleVersion.article_id == article_id)
@@ -204,7 +230,9 @@ def article_history(article_id: UUID, db: Session = Depends(get_db)):
 
 @app.post("/articles/search/", response_model=List[ArticleSearchHit])
 def search_articles(
-    query: ArticleSearchQuery = Body(...), db: Session = Depends(get_db)
+    query: ArticleSearchQuery = Body(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
 ):
     query_embedding = embed_text(query.q)
     hits = search_vector(query_embedding, db=db)
