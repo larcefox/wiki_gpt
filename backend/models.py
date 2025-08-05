@@ -8,6 +8,17 @@ import uuid
 Base = declarative_base()
 
 
+class Team(Base):
+    __tablename__ = "teams"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    users = relationship("User", back_populates="team")
+    articles = relationship("Article", back_populates="team")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -16,7 +27,9 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"))
 
+    team = relationship("Team", back_populates="users")
     roles = relationship("Role", secondary="user_roles", back_populates="users")
 
 
@@ -45,6 +58,7 @@ class ArticleGroup(Base):
 
     articles = relationship("Article", back_populates="group")
 
+
 class Article(Base):
     __tablename__ = "articles"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -53,9 +67,11 @@ class Article(Base):
     tags = Column(String, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     group_id = Column(UUID(as_uuid=True), ForeignKey("article_groups.id"), nullable=True)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), nullable=True)
     is_deleted = Column(Boolean, default=False)
 
     group = relationship("ArticleGroup", back_populates="articles")
+    team = relationship("Team", back_populates="articles")
 
 
 class ArticleVersion(Base):
