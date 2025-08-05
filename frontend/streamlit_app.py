@@ -38,33 +38,48 @@ st.set_page_config(page_title="Wiki GPT – Frontend", layout="wide")
 # ---------------------------
 # Helpers
 # ---------------------------
-def api_post(path: str, payload: dict):
+def api_request(method: str, path: str, payload: dict | None = None, retry: bool = True):
     url = f"{API_BASE}{path}"
-    r = requests.post(url, json=payload, timeout=60)
+    headers = {}
+    token = st.session_state.get("access_token")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    r = requests.request(method, url, json=payload, headers=headers, timeout=60)
+    if r.status_code == 401 and retry and st.session_state.get("refresh_token"):
+        refresh = requests.post(
+            f"{API_BASE}/auth/refresh",
+            json={"refresh_token": st.session_state.get("refresh_token")},
+            timeout=60,
+        )
+        if refresh.status_code < 300:
+            data = refresh.json()
+            st.session_state["access_token"] = data["access_token"]
+            st.session_state["refresh_token"] = data["refresh_token"]
+            return api_request(method, path, payload, retry=False)
+        else:
+            for k in ["access_token", "refresh_token", "user"]:
+                st.session_state.pop(k, None)
+            st.error("Сессия истекла. Войдите снова.")
+            st.stop()
     if r.status_code >= 400:
-        raise RuntimeError(f"POST {path} failed: {r.status_code} {r.text}")
-    return r.json()
+        raise RuntimeError(f"{method.upper()} {path} failed: {r.status_code} {r.text}")
+    return r.json() if r.text else None
+
+
+def api_post(path: str, payload: dict):
+    return api_request("post", path, payload)
+
 
 def api_put(path: str, payload: dict):
-    url = f"{API_BASE}{path}"
-    r = requests.put(url, json=payload, timeout=60)
-    if r.status_code >= 400:
-        raise RuntimeError(f"PUT {path} failed: {r.status_code} {r.text}")
-    return r.json()
+    return api_request("put", path, payload)
+
 
 def api_get(path: str):
-    url = f"{API_BASE}{path}"
-    r = requests.get(url, timeout=60)
-    if r.status_code >= 400:
-        raise RuntimeError(f"GET {path} failed: {r.status_code} {r.text}")
-    return r.json()
+    return api_request("get", path)
+
 
 def api_delete(path: str):
-    url = f"{API_BASE}{path}"
-    r = requests.delete(url, timeout=60)
-    if r.status_code >= 400:
-        raise RuntimeError(f"DELETE {path} failed: {r.status_code} {r.text}")
-    return r.json()
+    return api_request("delete", path)
 
 def search_articles(query: str, tags=None):
     payload = {"q": query}
@@ -213,13 +228,44 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
 
 
 # ---------------------------
-# UI
+# Auth & UI
 # ---------------------------
+if "access_token" not in st.session_state:
+    st.header("Вход")
+    with st.form("login_form"):
+        email = st.text_input("Email")
+        password = st.text_input("Пароль", type="password")
+        submitted = st.form_submit_button("Войти")
+    if submitted:
+        try:
+            data = api_post("/auth/login", {"email": email, "password": password})
+            st.session_state["access_token"] = data["access_token"]
+            st.session_state["refresh_token"] = data["refresh_token"]
+            st.session_state["user"] = api_get("/auth/me")
+            st.experimental_rerun()
+        except Exception as e:
+            st.error(str(e))
+    st.stop()
+
+if "user" not in st.session_state:
+    st.session_state["user"] = api_get("/auth/me")
+
+roles = st.session_state["user"].get("roles", [])
 st.sidebar.title("Wiki GPT")
-page = st.sidebar.radio(
-    "Навигация",
-    ["Создать статью", "Редактировать статью", "Поиск", "Статья по ID", "Диагностика"],
-)
+st.sidebar.write(st.session_state["user"]["email"])
+if st.sidebar.button("Выйти"):
+    for k in ["access_token", "refresh_token", "user"]:
+        st.session_state.pop(k, None)
+    st.experimental_rerun()
+
+options: list[str] = []
+if "author" in roles or "admin" in roles:
+    options += ["Создать статью", "Редактировать статью"]
+if any(r in roles for r in ["reader", "author", "admin"]):
+    options += ["Поиск", "Статья по ID"]
+if "admin" in roles:
+    options += ["Диагностика"]
+page = st.sidebar.radio("Навигация", options)
 
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Backend: {API_BASE}")

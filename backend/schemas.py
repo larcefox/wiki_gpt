@@ -85,6 +85,7 @@ class UserOut(BaseModel):
     id: UUID
     email: EmailStr
     is_active: bool
+    roles: List[str] = []
 
     class Config:
         orm_mode = True
