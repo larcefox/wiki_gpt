@@ -5,6 +5,7 @@ import logging
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from streamlit.errors import StreamlitSecretNotFoundError
 try:
@@ -145,6 +146,61 @@ def llm_recommendations(title: str, content: str) -> str:
 
 
 # ---------------------------
+# Markdown helpers
+# ---------------------------
+def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str | None = None, on_change=None):
+    """Render a text area with a simple Markdown toolbar."""
+    value = st.text_area(label, key=key, height=height, placeholder=placeholder, on_change=on_change)
+    label_json = json.dumps(label)
+    components.html(
+        f"""
+        <div style='margin-bottom:4px'>
+            <button onclick=\"surround('**','**')\"><b>B</b></button>
+            <button onclick=\"surround('*','*')\"><i>I</i></button>
+            <button onclick=\"surround('# ','')\">H1</button>
+            <button onclick=\"surround('\\\\n- ','')\">Список</button>
+            <button onclick=\"surround('[','](url)')\">Ссылка</button>
+            <button onclick=\"surround('\\\\n```\\\\n','\\\\n```\\\\n')\">Код</button>
+            <button onclick=\"insertTable()\">Таблица</button>
+        </div>
+        <script>
+        const textarea = window.parent.document.querySelector(`textarea[aria-label={label_json}]`);
+        function surround(prefix, suffix) {{
+            if (!textarea) return;
+            prefix = prefix.replace(/\\\\n/g, '\n');
+            suffix = suffix.replace(/\\\\n/g, '\n');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const before = textarea.value.substring(0, start);
+            const selected = textarea.value.substring(start, end);
+            const after = textarea.value.substring(end);
+            textarea.value = before + prefix + selected + suffix + after;
+            textarea.focus();
+            textarea.selectionStart = start + prefix.length;
+            textarea.selectionEnd = start + prefix.length + selected.length;
+            textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        }}
+        function insertTable() {{
+            if (!textarea) return;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const before = textarea.value.substring(0, start);
+            const after = textarea.value.substring(end);
+            const snippet = '\\n| Col1 | Col2 |\\n| --- | --- |\\n|   |   |\\n'.replace(/\\\\n/g, '\n');
+            textarea.value = before + snippet + after;
+            textarea.focus();
+            const pos = start + snippet.length;
+            textarea.selectionStart = textarea.selectionEnd = pos;
+            textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        }}
+        </script>
+        """,
+        height=50,
+    )
+    return value
+
+
+# ---------------------------
 # UI
 # ---------------------------
 st.sidebar.title("Wiki GPT")
@@ -197,11 +253,11 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
-        st.text_area(
+        markdown_editor(
             "Текст статьи",
+            key="create_content",
             height=300,
             placeholder="Содержимое в Markdown/тексте",
-            key="create_content",
             on_change=schedule_llm,
         )
         col1, col2 = st.columns([1, 1])
@@ -263,7 +319,7 @@ elif page == "Редактировать статью":
     article_id = st.text_input("Article ID", "")
     title = st.text_input("Новый заголовок", "")
     tags = st.text_input("Новые теги (через запятую)", "")
-    content = st.text_area("Новый текст статьи", height=300)
+    content = markdown_editor("Новый текст статьи", key="edit_content", height=300)
 
     col1, col2 = st.columns([1, 1])
     with col1:
