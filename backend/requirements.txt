@@ -6,3 +6,6 @@ qdrant-client
 openai
 python-dotenv
 requests
+PyJWT
+passlib[bcrypt]
+email-validator

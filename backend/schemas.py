@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from uuid import UUID
 from typing import List, Optional
 
@@ -56,6 +56,35 @@ class ArticleGroupOut(BaseModel):
     id: UUID
     name: str
     description: Optional[str]
+
+    class Config:
+        orm_mode = True
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class UserOut(BaseModel):
+    id: UUID
+    email: EmailStr
+    is_active: bool
 
     class Config:
         orm_mode = True
