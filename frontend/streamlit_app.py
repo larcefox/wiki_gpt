@@ -155,13 +155,13 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
     components.html(
         f"""
         <div style='margin-bottom:4px'>
-            <button onclick=\"surround('**','**')\"><b>B</b></button>
-            <button onclick=\"surround('*','*')\"><i>I</i></button>
-            <button onclick=\"surround('# ','')\">H1</button>
-            <button onclick=\"surround('\\\\n- ','')\">Список</button>
-            <button onclick=\"surround('[','](url)')\">Ссылка</button>
-            <button onclick=\"surround('\\\\n```\\\\n','\\\\n```\\\\n')\">Код</button>
-            <button onclick=\"insertTable()\">Таблица</button>
+            <button id=\"bold\"><b>B</b></button>
+            <button id=\"italic\"><i>I</i></button>
+            <button id=\"h1\">H1</button>
+            <button id=\"list\">Список</button>
+            <button id=\"link\">Ссылка</button>
+            <button id=\"code\">Код</button>
+            <button id=\"table\">Таблица</button>
         </div>
         <script>
         const getTextarea = () => window.parent.document.querySelector(`textarea[aria-label={label_json}]`);
@@ -195,6 +195,16 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             textarea.selectionStart = textarea.selectionEnd = pos;
             textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
         }}
+        window.addEventListener('load', () => {
+            document.getElementById('bold').addEventListener('click', () => surround('**','**'));
+            document.getElementById('italic').addEventListener('click', () => surround('*','*'));
+            document.getElementById('h1').addEventListener('click', () => surround('# ',''));
+            document.getElementById('list').addEventListener('click', () => surround('\n- ',''));
+            document.getElementById('link').addEventListener('click', () => surround('[','](url)'));
+            document.getElementById('code').addEventListener('click', () => surround('\n```\n','\n```\n'));
+            document.getElementById('table').addEventListener('click', insertTable);
+        });
+
         </script>
         """,
         height=50,
