@@ -195,7 +195,7 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             textarea.selectionStart = textarea.selectionEnd = pos;
             textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
         }}
-        window.addEventListener('load', () => {
+        window.addEventListener('load', () => {{
             document.getElementById('bold').addEventListener('click', () => surround('**','**'));
             document.getElementById('italic').addEventListener('click', () => surround('*','*'));
             document.getElementById('h1').addEventListener('click', () => surround('# ',''));
@@ -203,7 +203,7 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             document.getElementById('link').addEventListener('click', () => surround('[','](url)'));
             document.getElementById('code').addEventListener('click', () => surround('\n```\n','\n```\n'));
             document.getElementById('table').addEventListener('click', insertTable);
-        });
+        }});
 
         </script>
         """,
