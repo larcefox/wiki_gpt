@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, PointStruct, VectorParams
 from typing import List, Dict
+from uuid import UUID as UUID_cls
 from sqlalchemy.orm import Session
 from models import Article
 from schemas import ArticleSearchHit
@@ -64,7 +65,7 @@ def search_vector(vector: List[float], db: Session, limit: int = 5) -> List[Arti
         with_payload=True
     )
 
-    ids = [hit.id for hit in hits]
+    ids = [UUID_cls(str(hit.id)) for hit in hits]
     scores = {str(hit.id): hit.score for hit in hits}
 
     articles = db.query(Article).filter(Article.id.in_(ids)).all()
