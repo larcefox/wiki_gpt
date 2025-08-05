@@ -7,6 +7,10 @@ import requests
 import streamlit as st
 from dotenv import load_dotenv
 from streamlit.errors import StreamlitSecretNotFoundError
+try:
+    from streamlit.runtime.scriptrunner import add_script_run_ctx
+except ModuleNotFoundError:  # Streamlit < 1.18
+    from streamlit.scriptrunner import add_script_run_ctx  # type: ignore
 
 load_dotenv()
 
@@ -187,6 +191,7 @@ if page == "Создать статью":
             st.rerun()
 
         st.session_state.llm_timer = threading.Timer(1.5, run)
+        add_script_run_ctx(st.session_state.llm_timer)
         st.session_state.llm_timer.start()
 
     with main_col:
