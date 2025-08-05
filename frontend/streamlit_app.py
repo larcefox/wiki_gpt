@@ -155,13 +155,13 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
     components.html(
         f"""
         <div style='margin-bottom:4px'>
-            <button id=\"bold\"><b>B</b></button>
-            <button id=\"italic\"><i>I</i></button>
-            <button id=\"h1\">H1</button>
-            <button id=\"list\">Список</button>
-            <button id=\"link\">Ссылка</button>
-            <button id=\"code\">Код</button>
-            <button id=\"table\">Таблица</button>
+            <button type=\"button\" id=\"bold\"><b>B</b></button>
+            <button type=\"button\" id=\"italic\"><i>I</i></button>
+            <button type=\"button\" id=\"h1\">H1</button>
+            <button type=\"button\" id=\"list\">Список</button>
+            <button type=\"button\" id=\"link\">Ссылка</button>
+            <button type=\"button\" id=\"code\">Код</button>
+            <button type=\"button\" id=\"table\">Таблица</button>
         </div>
         <script>
         const getTextarea = () => window.parent.document.querySelector(`textarea[aria-label={label_json}]`);
@@ -196,13 +196,13 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
         }}
         window.addEventListener('load', () => {{
-            document.getElementById('bold').addEventListener('click', () => surround('**','**'));
-            document.getElementById('italic').addEventListener('click', () => surround('*','*'));
-            document.getElementById('h1').addEventListener('click', () => surround('# ',''));
-            document.getElementById('list').addEventListener('click', () => surround('\n- ',''));
-            document.getElementById('link').addEventListener('click', () => surround('[','](url)'));
-            document.getElementById('code').addEventListener('click', () => surround('\n```\n','\n```\n'));
-            document.getElementById('table').addEventListener('click', insertTable);
+            document.getElementById('bold').addEventListener('click', (e) => {{ e.preventDefault(); surround('**','**'); }});
+            document.getElementById('italic').addEventListener('click', (e) => {{ e.preventDefault(); surround('*','*'); }});
+            document.getElementById('h1').addEventListener('click', (e) => {{ e.preventDefault(); surround('# ',''); }});
+            document.getElementById('list').addEventListener('click', (e) => {{ e.preventDefault(); surround('\n- ',''); }});
+            document.getElementById('link').addEventListener('click', (e) => {{ e.preventDefault(); surround('[','](url)'); }});
+            document.getElementById('code').addEventListener('click', (e) => {{ e.preventDefault(); surround('\n```\n','\n```\n'); }});
+            document.getElementById('table').addEventListener('click', (e) => {{ e.preventDefault(); insertTable(); }});
         }});
 
         </script>
