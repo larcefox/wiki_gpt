@@ -177,8 +177,8 @@ if page == "Создать статью":
             st.session_state.llm_timer.cancel()
 
         def run():
-            title = st.session_state.create_title.strip()
-            content = st.session_state.create_content.strip()
+            title = st.session_state.get("create_title", "").strip()
+            content = st.session_state.get("create_content", "").strip()
             if not title and not content:
                 st.session_state.llm_tips = ""
             else:
