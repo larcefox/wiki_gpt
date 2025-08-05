@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -25,6 +25,7 @@ class Article(Base):
     tags = Column(String, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     group_id = Column(UUID(as_uuid=True), ForeignKey("article_groups.id"), nullable=True)
+    is_deleted = Column(Boolean, default=False)
 
     group = relationship("ArticleGroup", back_populates="articles")
 
