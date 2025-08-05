@@ -2,6 +2,7 @@ import os
 import json
 import threading
 import logging
+
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -162,6 +163,7 @@ if page == "Создать статью":
 
     def schedule_llm() -> None:
         if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
+
             logger.debug("LLM disabled, skipping schedule")
             return
         if st.session_state.llm_timer:
