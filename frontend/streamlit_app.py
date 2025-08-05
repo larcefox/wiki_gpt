@@ -6,15 +6,22 @@ import logging
 import requests
 import streamlit as st
 from dotenv import load_dotenv
+from streamlit.errors import StreamlitSecretNotFoundError
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def _env_or_secret(key: str) -> str | None:
-    value = (os.getenv(key) or st.secrets.get(key, "")).strip()
-    return value or None
+    env_val = os.getenv(key)
+    if env_val:
+        return env_val.strip()
+    try:
+        return st.secrets[key].strip()
+    except (KeyError, StreamlitSecretNotFoundError):
+        return None
 
 API_BASE = os.getenv("WIKI_API_BASE", "http://localhost:8000")
 YANDEX_TOKEN = _env_or_secret("YANDEX_OAUTH_TOKEN")
