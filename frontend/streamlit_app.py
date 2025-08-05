@@ -1,15 +1,24 @@
 import os
 import json
 import threading
+import logging
+
 import requests
 import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def _env_or_secret(key: str) -> str | None:
+    value = (os.getenv(key) or st.secrets.get(key, "")).strip()
+    return value or None
+
 API_BASE = os.getenv("WIKI_API_BASE", "http://localhost:8000")
-YANDEX_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
-YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
+YANDEX_TOKEN = _env_or_secret("YANDEX_OAUTH_TOKEN")
+YANDEX_FOLDER_ID = _env_or_secret("YANDEX_FOLDER_ID")
 
 st.set_page_config(page_title="Wiki GPT – Frontend", layout="wide")
 
@@ -103,8 +112,14 @@ def llm_recommendations(title: str, content: str) -> str:
         ],
     }
 
-    r = requests.post(url, headers=headers, json=payload, timeout=90)
+    logger.info("LLM request: title=%s content_len=%d", title, len(content))
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=90)
+    except Exception as e:
+        logger.exception("LLM request failed")
+        return f"Ошибка LLM: {e}"
     if r.status_code != 200:
+        logger.error("LLM error %s: %s", r.status_code, r.text)
         return f"Ошибка LLM: {r.status_code} {r.text}"
 
     data = r.json()
@@ -112,7 +127,9 @@ def llm_recommendations(title: str, content: str) -> str:
     if alternatives:
         text = alternatives[0].get("message", {}).get("text", "").strip()
         if text:
+            logger.info("LLM response received, %d chars", len(text))
             return text
+    logger.warning("LLM response parsing failed")
     return "Не удалось распарсить ответ LLM:\n\n" + json.dumps(data, ensure_ascii=False, indent=2)
 
 
@@ -146,6 +163,8 @@ if page == "Создать статью":
 
     def schedule_llm() -> None:
         if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
+
+            logger.debug("LLM disabled, skipping schedule")
             return
         if st.session_state.llm_timer:
             st.session_state.llm_timer.cancel()
@@ -156,6 +175,7 @@ if page == "Создать статью":
             if not title and not content:
                 st.session_state.llm_tips = ""
             else:
+                logger.info("Auto-updating LLM recommendations")
                 st.session_state.llm_tips = llm_recommendations(title, content)
             st.rerun()
 
@@ -209,9 +229,8 @@ if page == "Создать статью":
                     st.warning("Сначала заполни заголовок/текст.")
                 else:
                     with st.spinner("Генерирую рекомендации..."):
-                        st.session_state.llm_tips = llm_recommendations(
-                            title_val, content_val
-                        )
+                        logger.info("Manual LLM request")
+                        st.session_state.llm_tips = llm_recommendations(title_val, content_val)
                     st.rerun()
 
     with rec_col:
@@ -254,6 +273,7 @@ elif page == "Редактировать статью":
                 st.warning("Сначала заполни заголовок/текст.")
             else:
                 with st.spinner("Генерирую рекомендации..."):
+                    logger.info("Manual LLM request on edit page")
                     tips = llm_recommendations(title.strip(), content.strip())
                 st.markdown("### Рекомендации")
                 st.markdown(tips)
