@@ -54,7 +54,20 @@ def insert_vector(article_id: str, embedding: list[float]):
 
 
 def delete_vector(article_id: str):
-    client.delete(collection_name=COLLECTION_NAME, points_selector={"points": [article_id]})
+    """Remove vector representation of an article from Qdrant.
+
+    The previous implementation tried to pass a dictionary with a ``points``
+    key as the selector which is no longer supported by the version of the
+    ``qdrant-client`` library used in this project.  The client now expects the
+    list of point IDs directly as ``points_selector``.  Passing the dictionary
+    caused a ``ValueError`` and ultimately a 500 error when deleting an
+    article.  By providing the list of IDs directly we ensure the vector is
+    deleted correctly.
+    """
+
+    # ``points_selector`` accepts a list of ids to delete.  The article id is
+    # already a string UUID, so we can forward it as is.
+    client.delete(collection_name=COLLECTION_NAME, points_selector=[article_id])
 
 
 def search_vector(vector: List[float], db: Session, limit: int = 5) -> List[ArticleSearchHit]:
@@ -68,7 +81,11 @@ def search_vector(vector: List[float], db: Session, limit: int = 5) -> List[Arti
     ids = [UUID_cls(str(hit.id)) for hit in hits]
     scores = {str(hit.id): hit.score for hit in hits}
 
-    articles = db.query(Article).filter(Article.id.in_(ids)).all()
+    articles = (
+        db.query(Article)
+        .filter(Article.id.in_(ids), Article.is_deleted == False)
+        .all()
+    )
     return [
         ArticleSearchHit(
             id=str(a.id),

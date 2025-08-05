@@ -35,6 +35,12 @@ def ensure_columns():
             conn.execute(text("ALTER TABLE articles ADD COLUMN tags TEXT DEFAULT ''"))
         if "group_id" not in article_cols:
             conn.execute(text("ALTER TABLE articles ADD COLUMN group_id UUID"))
+        if "is_deleted" not in article_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE articles ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE"
+                )
+            )
         version_cols = [c["name"] for c in inspector.get_columns("article_versions")]
         if "tags" not in version_cols:
             conn.execute(
@@ -72,7 +78,7 @@ def list_groups(db: Session = Depends(get_db)):
 
 @app.get("/articles/", response_model=List[ArticleOut])
 def list_articles(db: Session = Depends(get_db)):
-    articles = db.query(Article).all()
+    articles = db.query(Article).filter(Article.is_deleted == False).all()
     return [
         ArticleOut(
             id=a.id,
@@ -112,7 +118,11 @@ def create_article(article: ArticleCreate, db: Session = Depends(get_db)):
 
 @app.put("/articles/{article_id}", response_model=ArticleOut)
 def update_article(article_id: UUID, article: ArticleUpdate, db: Session = Depends(get_db)):
-    db_article = db.query(Article).filter(Article.id == article_id).first()
+    db_article = (
+        db.query(Article)
+        .filter(Article.id == article_id, Article.is_deleted == False)
+        .first()
+    )
     if db_article is None:
         raise HTTPException(status_code=404, detail="Article not found")
 
@@ -139,7 +149,11 @@ def update_article(article_id: UUID, article: ArticleUpdate, db: Session = Depen
 
 @app.get("/articles/{article_id}", response_model=ArticleOut)
 def get_article(article_id: UUID, db: Session = Depends(get_db)):
-    db_article = db.query(Article).filter(Article.id == article_id).first()
+    db_article = (
+        db.query(Article)
+        .filter(Article.id == article_id, Article.is_deleted == False)
+        .first()
+    )
     if db_article is None:
         raise HTTPException(status_code=404, detail="Article not found")
     return ArticleOut(
@@ -153,11 +167,14 @@ def get_article(article_id: UUID, db: Session = Depends(get_db)):
 
 @app.delete("/articles/{article_id}")
 def delete_article(article_id: UUID, db: Session = Depends(get_db)):
-    db_article = db.query(Article).filter(Article.id == article_id).first()
+    db_article = (
+        db.query(Article)
+        .filter(Article.id == article_id, Article.is_deleted == False)
+        .first()
+    )
     if db_article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-    db.delete(db_article)
-    db.query(ArticleVersion).filter(ArticleVersion.article_id == article_id).delete()
+    db_article.is_deleted = True
     db.commit()
     delete_vector(str(article_id))
     return {"status": "deleted"}
