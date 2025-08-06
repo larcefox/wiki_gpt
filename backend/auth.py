@@ -5,6 +5,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import jwt
+import bcrypt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from collections import deque
@@ -20,6 +21,19 @@ from schemas import (
     UserOut,
     RegisterResponse,
 )
+
+
+# Passlib relies on ``bcrypt.__about__.__version__`` to detect the version of
+# the bcrypt library.  Some minimal bcrypt implementations used in various
+# environments (e.g. distroless containers) do not ship this attribute,
+# causing an ``AttributeError`` during application start-up.  To ensure the
+# authentication module works regardless of the underlying bcrypt package, we
+# provide a lightweight shim exposing the required attribute when missing.
+if not hasattr(bcrypt, "__about__"):
+    class _About:
+        __version__ = getattr(bcrypt, "__version__", "0")
+
+    bcrypt.__about__ = _About()  # type: ignore[attr-defined]
 
 SECRET_KEY = os.getenv("JWT_SECRET", "secret")
 ALGORITHM = "HS256"
