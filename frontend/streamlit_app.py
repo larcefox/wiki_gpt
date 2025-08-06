@@ -203,6 +203,17 @@ def markdown_editor(
         initialValue: {initial_js}
       }});
       const root = window.parent;
+      // Notify Streamlit that the component is ready and push the initial value
+      root.postMessage({{
+        isStreamlitMessage: true,
+        type: 'streamlit:componentReady',
+        height: 0,
+      }}, '*');
+      root.postMessage({{
+        isStreamlitMessage: true,
+        type: 'streamlit:setComponentValue',
+        value: easyMDE.value(),
+      }}, '*');
       easyMDE.codemirror.on('change', function() {{
         root.postMessage({{
           isStreamlitMessage: true,
