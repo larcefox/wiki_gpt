@@ -330,7 +330,7 @@ if "access_token" not in st.session_state:
                 st.session_state["access_token"] = data["access_token"]
                 st.session_state["refresh_token"] = data["refresh_token"]
                 st.session_state["user"] = api_get("/auth/me")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(str(e))
 
@@ -345,7 +345,7 @@ if "access_token" not in st.session_state:
                 st.session_state["access_token"] = data["access_token"]
                 st.session_state["refresh_token"] = data["refresh_token"]
                 st.session_state["user"] = api_get("/auth/me")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(str(e))
     st.stop()
@@ -359,7 +359,7 @@ st.sidebar.write(st.session_state["user"]["email"])
 if st.sidebar.button("Выйти"):
     for k in ["access_token", "refresh_token", "user"]:
         st.session_state.pop(k, None)
-    st.experimental_rerun()
+    st.rerun()
 
 options: list[str] = []
 if "author" in roles or "admin" in roles:
