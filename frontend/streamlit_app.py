@@ -6,8 +6,10 @@ import logging
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
+from streamlit_quill import quill
 from dotenv import load_dotenv
 from streamlit.errors import StreamlitSecretNotFoundError
+
 try:
     from streamlit.runtime.scriptrunner import add_script_run_ctx
 except ModuleNotFoundError:  # Streamlit < 1.18
@@ -28,6 +30,7 @@ def _env_or_secret(key: str) -> str | None:
     except (KeyError, StreamlitSecretNotFoundError):
         return None
 
+
 API_BASE = os.getenv("WIKI_API_BASE", "http://localhost:8000")
 YANDEX_TOKEN = _env_or_secret("YANDEX_OAUTH_TOKEN")
 YANDEX_FOLDER_ID = _env_or_secret("YANDEX_FOLDER_ID")
@@ -43,7 +46,10 @@ def _state_str(key: str) -> str:
     val = st.session_state.get(key, "")
     return val if isinstance(val, str) else ""
 
-def api_request(method: str, path: str, payload: dict | None = None, retry: bool = True):
+
+def api_request(
+    method: str, path: str, payload: dict | None = None, retry: bool = True
+):
     url = f"{API_BASE}{path}"
     headers = {}
     token = st.session_state.get("access_token")
@@ -86,28 +92,39 @@ def api_get(path: str):
 def api_delete(path: str):
     return api_request("delete", path)
 
+
 def search_articles(query: str, tags=None):
     payload = {"q": query}
     if tags:
         payload["tags"] = tags
     return api_post("/articles/search/", payload)
 
+
 def create_article(title: str, content: str, tags):
     return api_post("/articles/", {"title": title, "content": content, "tags": tags})
 
+
 def update_article(article_id: str, title: str, content: str, tags):
-    return api_put(f"/articles/{article_id}", {"title": title, "content": content, "tags": tags})
+    return api_put(
+        f"/articles/{article_id}", {"title": title, "content": content, "tags": tags}
+    )
+
 
 def get_article(article_id: str):
     return api_get(f"/articles/{article_id}")
 
+
 def delete_article(article_id: str):
     return api_delete(f"/articles/{article_id}")
+
 
 def get_history(article_id: str):
     return api_get(f"/articles/{article_id}/history")
 
-def suggest_related(title: str, content: str, exclude_id: str | None = None, top_k: int = 5):
+
+def suggest_related(
+    title: str, content: str, exclude_id: str | None = None, top_k: int = 5
+):
     results = search_articles(f"{title}\n{content}")
     unique = []
     for hit in results:
@@ -115,6 +132,7 @@ def suggest_related(title: str, content: str, exclude_id: str | None = None, top
             continue
         unique.append(hit)
     return unique[:top_k]
+
 
 def llm_recommendations(title: str, content: str) -> str:
     if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
@@ -155,14 +173,18 @@ def llm_recommendations(title: str, content: str) -> str:
         return f"Ошибка LLM: {r.status_code} {r.text}"
 
     data = r.json()
-    alternatives = data.get("result", {}).get("alternatives") or data.get("alternatives")
+    alternatives = data.get("result", {}).get("alternatives") or data.get(
+        "alternatives"
+    )
     if alternatives:
         text = alternatives[0].get("message", {}).get("text", "").strip()
         if text:
             logger.info("LLM response received, %d chars", len(text))
             return text
     logger.warning("LLM response parsing failed")
-    return "Не удалось распарсить ответ LLM:\n\n" + json.dumps(data, ensure_ascii=False, indent=2)
+    return "Не удалось распарсить ответ LLM:\n\n" + json.dumps(
+        data, ensure_ascii=False, indent=2
+    )
 
 
 # ---------------------------
@@ -248,6 +270,8 @@ def markdown_editor(
         on_change()
     st.session_state[prev_key] = content
     return content
+
+
 # ---------------------------
 # Auth & UI
 # ---------------------------
@@ -275,7 +299,9 @@ if "access_token" not in st.session_state:
             r_submitted = st.form_submit_button("Зарегистрироваться")
         if r_submitted:
             try:
-                data = api_post("/auth/register", {"email": r_email, "password": r_password})
+                data = api_post(
+                    "/auth/register", {"email": r_email, "password": r_password}
+                )
                 st.session_state["access_token"] = data["access_token"]
                 st.session_state["refresh_token"] = data["refresh_token"]
                 st.session_state["user"] = api_get("/auth/me")
@@ -349,14 +375,15 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
-        st.text_area(
-
-            "Текст статьи",
+        content = quill(
+            value=_state_str("create_content"),
+            html=True,
+            placeholder="Напишите статью...",
             key="create_content",
-            height=300,
-            placeholder="Содержимое в Markdown/тексте",
-            on_change=schedule_llm,
         )
+
+        if content is not None:
+            st.session_state["create_content"] = content
         col1, col2 = st.columns([1, 1])
         with col1:
             if st.button("Сохранить статью", key="create_save"):
@@ -380,10 +407,12 @@ if page == "Создать статью":
                     st.success(f"Создано! ID: {res['id']}")
                     with st.expander("Похожие статьи сразу после сохранения"):
                         related = suggest_related(
-                            title_val, content_val, exclude_id=res['id'], top_k=5
+                            title_val, content_val, exclude_id=res["id"], top_k=5
                         )
                         for hit in related:
-                            st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
+                            st.write(
+                                f"**{hit['title']}** · score={hit.get('score'):.3f}"
+                            )
                             st.caption(
                                 f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}"
                             )
@@ -401,7 +430,9 @@ if page == "Создать статью":
                 else:
                     with st.spinner("Генерирую рекомендации..."):
                         logger.info("Manual LLM request")
-                        st.session_state.llm_tips = llm_recommendations(title_val, content_val)
+                        st.session_state.llm_tips = llm_recommendations(
+                            title_val, content_val
+                        )
                     st.rerun()
 
     with rec_col:
@@ -441,7 +472,9 @@ elif page == "Редактировать статью":
         else:
             try:
                 tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-                res = update_article(article_id.strip(), title_val, content_val, tag_list)
+                res = update_article(
+                    article_id.strip(), title_val, content_val, tag_list
+                )
                 st.success(f"Обновлено: {res['id']}")
             except Exception as e:
                 st.error(str(e))
@@ -464,7 +497,9 @@ elif page == "Редактировать статью":
         if not title.strip() and not content_val:
             st.warning("Сначала заполни заголовок/текст — по ним ищем похожие.")
         else:
-            related = suggest_related(title, content_val, exclude_id=article_id.strip(), top_k=10)
+            related = suggest_related(
+                title, content_val, exclude_id=article_id.strip(), top_k=10
+            )
             st.subheader("Похожие статьи")
             for hit in related:
                 st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
@@ -530,9 +565,11 @@ elif page == "Статья по ID":
 else:
     st.header("Диагностика")
     st.write("Проверка окружения:")
-    st.json({
-        "API_BASE": API_BASE,
-        "YANDEX_OAUTH_TOKEN": bool(YANDEX_TOKEN),
-        "YANDEX_FOLDER_ID": YANDEX_FOLDER_ID or "",
-    })
+    st.json(
+        {
+            "API_BASE": API_BASE,
+            "YANDEX_OAUTH_TOKEN": bool(YANDEX_TOKEN),
+            "YANDEX_FOLDER_ID": YANDEX_FOLDER_ID or "",
+        }
+    )
     st.caption("Если LLM выключен — рекомендации и рерэнк будут недоступны.")
