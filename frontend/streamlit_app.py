@@ -399,6 +399,7 @@ elif page == "Редактировать статью":
             if not article_id.strip():
                 st.error("Укажи ID статьи.")
             elif not title_val or not content_val:
+
                 st.error("Заполни заголовок и текст.")
             else:
                 try:
