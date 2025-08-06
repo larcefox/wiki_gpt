@@ -349,7 +349,8 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
-        markdown_editor(
+        st.text_area(
+
             "Текст статьи",
             key="create_content",
             height=300,
@@ -444,6 +445,7 @@ elif page == "Редактировать статью":
                 st.success(f"Обновлено: {res['id']}")
             except Exception as e:
                 st.error(str(e))
+
     with col2:
         if st.button("Рекомендации к статье (LLM)"):
             content_val = _state_str("edit_content").strip()
