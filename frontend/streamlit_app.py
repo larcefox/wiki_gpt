@@ -181,16 +181,18 @@ def markdown_editor(
 
     prev_key = f"{key}__prev"
     initial = _state_str(key)
+    placeholder_js = json.dumps(placeholder or "")
+    initial_js = json.dumps(initial)
     # EasyMDE provides a markdown editor with a toolbar loaded from CDN
     editor_id = f"editor_{key}"
     html = f"""
     <link rel='stylesheet' href='https://unpkg.com/easymde/dist/easymde.min.css'>
-    <textarea id='{editor_id}'>{initial}</textarea>
+    <textarea id='{editor_id}'></textarea>
     <script src='https://unpkg.com/easymde/dist/easymde.min.js'></script>
     <script>
       const easyMDE = new EasyMDE({{
         element: document.getElementById('{editor_id}'),
-        placeholder: '{placeholder or ''}',
+        placeholder: {placeholder_js},
         spellChecker: false,
         status: false,
         toolbar: [
@@ -198,8 +200,20 @@ def markdown_editor(
           'quote', 'unordered-list', 'ordered-list', 'link', 'code'
         ],
         forceSync: true,
+        initialValue: {initial_js}
       }});
       const root = window.parent;
+      // Notify Streamlit that the component is ready and push the initial value
+      root.postMessage({{
+        isStreamlitMessage: true,
+        type: 'streamlit:componentReady',
+        height: 0,
+      }}, '*');
+      root.postMessage({{
+        isStreamlitMessage: true,
+        type: 'streamlit:setComponentValue',
+        value: easyMDE.value(),
+      }}, '*');
       easyMDE.codemirror.on('change', function() {{
         root.postMessage({{
           isStreamlitMessage: true,
@@ -210,14 +224,18 @@ def markdown_editor(
     </script>
     """
 
-    # `components.html` does not support the Streamlit `key` parameter. Using it
-    # triggers `TypeError: IframeMixin._html() got an unexpected keyword` in
-    # recent Streamlit versions. The editor's ID already ensures uniqueness, so
-    # we simply drop the unsupported argument.
-    component_val = components.html(html, height=height + 80)
-    content = component_val if isinstance(component_val, str) else _state_str(key)
+    # Render the editor and fetch its value. Support Streamlit versions
+    # that may not accept a `key` argument for components.html.
+    try:
+        component_val = components.html(html, height=height + 80, key=key)
+    except TypeError:
+        component_val = components.html(html, height=height + 80)
 
-    st.session_state[key] = content
+    if isinstance(component_val, str):
+        content = component_val
+        st.session_state[key] = content
+    else:
+        content = _state_str(key)
     prev = _state_str(prev_key)
     if on_change and content != prev:
         on_change()
@@ -324,7 +342,7 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
-        content_input = markdown_editor(
+        markdown_editor(
             "Текст статьи",
             key="create_content",
             height=300,
@@ -335,7 +353,8 @@ if page == "Создать статью":
         with col1:
             if st.button("Сохранить статью"):
                 title_val = _state_str("create_title").strip()
-                content_val = content_input.strip()
+                content_val = _state_str("create_content").strip()
+                st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
                 if not title_val or not content_val:
                     st.error("Заполните заголовок и текст.")
                 else:
@@ -363,7 +382,7 @@ if page == "Создать статью":
         with col2:
             if st.button("Рекомендации (LLM)"):
                 title_val = _state_str("create_title").strip()
-                content_val = content_input.strip()
+                content_val = _state_str("create_content").strip()
                 if not title_val and not content_val:
                     st.warning("Сначала заполни заголовок/текст.")
                 else:
@@ -390,39 +409,44 @@ elif page == "Редактировать статью":
     article_id = st.text_input("Article ID", "")
     title = st.text_input("Новый заголовок", "")
     tags = st.text_input("Новые теги (через запятую)", "")
-    content = markdown_editor("Новый текст статьи", key="edit_content", height=300)
+    markdown_editor("Новый текст статьи", key="edit_content", height=300)
 
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button("Сохранить изменения"):
+            title_val = title.strip()
+            content_val = _state_str("edit_content").strip()
+            st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
             if not article_id.strip():
                 st.error("Укажи ID статьи.")
-            elif not title.strip() or not content.strip():
+            elif not title_val or not content_val:
                 st.error("Заполни заголовок и текст.")
             else:
                 try:
                     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-                    res = update_article(article_id.strip(), title.strip(), content.strip(), tag_list)
+                    res = update_article(article_id.strip(), title_val, content_val, tag_list)
                     st.success(f"Обновлено: {res['id']}")
                 except Exception as e:
                     st.error(str(e))
     with col2:
         if st.button("Рекомендации к статье (LLM)"):
-            if not title.strip() and not content.strip():
+            content_val = _state_str("edit_content").strip()
+            if not title.strip() and not content_val:
                 st.warning("Сначала заполни заголовок/текст.")
             else:
                 with st.spinner("Генерирую рекомендации..."):
                     logger.info("Manual LLM request on edit page")
-                    tips = llm_recommendations(title.strip(), content.strip())
+                    tips = llm_recommendations(title.strip(), content_val)
                 st.markdown("### Рекомендации")
                 st.markdown(tips)
 
     st.markdown("---")
     if st.button("Найти похожие статьи"):
-        if not title.strip() and not content.strip():
+        content_val = _state_str("edit_content").strip()
+        if not title.strip() and not content_val:
             st.warning("Сначала заполни заголовок/текст — по ним ищем похожие.")
         else:
-            related = suggest_related(title, content, exclude_id=article_id.strip(), top_k=10)
+            related = suggest_related(title, content_val, exclude_id=article_id.strip(), top_k=10)
             st.subheader("Похожие статьи")
             for hit in related:
                 st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
