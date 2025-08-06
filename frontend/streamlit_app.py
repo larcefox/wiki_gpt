@@ -6,7 +6,6 @@ import logging
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_ace import st_ace
 from dotenv import load_dotenv
 from streamlit.errors import StreamlitSecretNotFoundError
 try:
@@ -168,27 +167,52 @@ def markdown_editor(
     label: str,
     key: str,
     *,
-    height=300,
-    placeholder=None,
-    language="markdown",
+    height: int = 300,
+    placeholder: str | None = None,
     on_change=None,
 ):
-    prev_content = st.session_state.get(key, "")
-    content = st_ace(
-        placeholder=placeholder or "",
-        language=language,
-        theme="monokai",  # можно заменить на "github", "twilight" и т.д.
-        key=key,
-        height=height,
-        font_size=14,
-        show_gutter=False,
-        show_print_margin=False,
-        wrap=True,
-        auto_update=True,
-    )
-    if on_change and content != prev_content:
+    """Markdown editor with formatting toolbar based on EasyMDE."""
+    st.markdown(f"#### {label}")
+
+    prev_key = f"{key}__prev"
+    initial = st.session_state.get(key, "")
+    # EasyMDE provides a markdown editor with a toolbar loaded from CDN
+    editor_id = f"editor_{key}"
+    html = f"""
+    <link rel='stylesheet' href='https://unpkg.com/easymde/dist/easymde.min.css'>
+    <textarea id='{editor_id}'>{initial}</textarea>
+    <script src='https://unpkg.com/easymde/dist/easymde.min.js'></script>
+    <script>
+      const easyMDE = new EasyMDE({{
+        element: document.getElementById('{editor_id}'),
+        placeholder: '{placeholder or ''}',
+        spellChecker: false,
+        status: false,
+        toolbar: [
+          'bold', 'italic', 'heading', '|',
+          'quote', 'unordered-list', 'ordered-list', 'link', 'code'
+        ],
+        forceSync: true,
+      }});
+      const root = window.parent;
+      easyMDE.codemirror.on('change', function() {{
+        root.postMessage({{
+          isStreamlitMessage: true,
+          type: 'streamlit:setComponentValue',
+          value: easyMDE.value()
+        }}, '*');
+      }});
+    </script>
+    """
+
+    content = components.html(html, height=height + 80, key=f"{key}_html") or ""
+
+    st.session_state[key] = content
+    prev = st.session_state.get(prev_key, "")
+    if on_change and content != prev:
         on_change()
-    return content or ""
+    st.session_state[prev_key] = content
+    return content
 # ---------------------------
 # Auth & UI
 # ---------------------------
@@ -280,6 +304,7 @@ if page == "Создать статью":
             else:
                 logger.info("Auto-updating LLM recommendations")
                 st.session_state.llm_tips = llm_recommendations(title, content)
+            st.session_state.llm_timer = None
             st.rerun()
 
         st.session_state.llm_timer = threading.Timer(1.5, run)
