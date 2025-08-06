@@ -181,16 +181,18 @@ def markdown_editor(
 
     prev_key = f"{key}__prev"
     initial = _state_str(key)
+    placeholder_js = json.dumps(placeholder or "")
+    initial_js = json.dumps(initial)
     # EasyMDE provides a markdown editor with a toolbar loaded from CDN
     editor_id = f"editor_{key}"
     html = f"""
     <link rel='stylesheet' href='https://unpkg.com/easymde/dist/easymde.min.css'>
-    <textarea id='{editor_id}'>{initial}</textarea>
+    <textarea id='{editor_id}'></textarea>
     <script src='https://unpkg.com/easymde/dist/easymde.min.js'></script>
     <script>
       const easyMDE = new EasyMDE({{
         element: document.getElementById('{editor_id}'),
-        placeholder: '{placeholder or ''}',
+        placeholder: {placeholder_js},
         spellChecker: false,
         status: false,
         toolbar: [
@@ -198,6 +200,7 @@ def markdown_editor(
           'quote', 'unordered-list', 'ordered-list', 'link', 'code'
         ],
         forceSync: true,
+        initialValue: {initial_js}
       }});
       const root = window.parent;
       easyMDE.codemirror.on('change', function() {{
@@ -210,11 +213,18 @@ def markdown_editor(
     </script>
     """
 
-    # Render the editor and fetch its value.
-    component_val = components.html(html, height=height + 80)
-    content = component_val if isinstance(component_val, str) else _state_str(key)
+    # Render the editor and fetch its value. Support Streamlit versions
+    # that may not accept a `key` argument for components.html.
+    try:
+        component_val = components.html(html, height=height + 80, key=key)
+    except TypeError:
+        component_val = components.html(html, height=height + 80)
 
-    st.session_state[key] = content
+    if isinstance(component_val, str):
+        content = component_val
+        st.session_state[key] = content
+    else:
+        content = _state_str(key)
     prev = _state_str(prev_key)
     if on_change and content != prev:
         on_change()
