@@ -165,7 +165,7 @@ def llm_recommendations(title: str, content: str) -> str:
 # ---------------------------
 def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str | None = None, on_change=None):
     """Render a text area with a simple Markdown toolbar."""
-    label_json = json.dumps(label)
+    label_json = label.replace('"', '').replace("'", "")
     components.html(
         """
         <div style='margin-bottom:4px'>
@@ -180,7 +180,7 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             <button type=\"button\" id=\"hr\">─</button>
         </div>
         <script>
-        const getTextarea = () => window.parent.document.querySelector(`textarea[aria-label={label_json}]`);
+        const getTextarea = () => window.parent.document.querySelector(`textarea[aria-label="${label_json}"]`);
 
         function toggleWrap(prefix, suffix, placeholder='текст') {
             const textarea = getTextarea();
@@ -310,7 +310,7 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             document.getElementById('hr').addEventListener('click', e => { e.preventDefault(); insertHorizontalRule(); });
         });
         </script>
-        """.replace("{label_json}", label_json),
+        """.replace("${label_json}", label_json),
         height=60,
     )
     return st.text_area(label, key=key, height=height, placeholder=placeholder, on_change=on_change)
