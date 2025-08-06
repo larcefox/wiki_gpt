@@ -225,9 +225,16 @@ def markdown_editor(
     """
 
     # Render the editor and fetch its value. Support Streamlit versions
-    # that may not accept a `key` argument for components.html.
+    # that may not accept newer arguments for components.html.
     try:
-        component_val = components.html(html, height=height + 80, key=key)
+        component_val = components.html(
+            html,
+            height=height + 80,
+            key=key,
+            scrolling=False,
+            always_emit_events=True,
+        )
+
     except TypeError:
         component_val = components.html(html, height=height + 80)
 
