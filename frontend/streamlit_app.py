@@ -437,7 +437,6 @@ elif page == "Редактировать статью":
                 st.success(f"Обновлено: {res['id']}")
             except Exception as e:
                 st.error(str(e))
-
     with col2:
         if st.button("Рекомендации к статье (LLM)"):
             content_val = _state_str("edit_content").strip()
