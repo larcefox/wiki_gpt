@@ -324,7 +324,7 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
-        content_input = markdown_editor(
+        markdown_editor(
             "Текст статьи",
             key="create_content",
             height=300,
@@ -335,7 +335,7 @@ if page == "Создать статью":
         with col1:
             if st.button("Сохранить статью"):
                 title_val = _state_str("create_title").strip()
-                content_val = content_input.strip()
+                content_val = _state_str("create_content").strip()
                 if not title_val or not content_val:
                     st.error("Заполните заголовок и текст.")
                 else:
@@ -363,7 +363,7 @@ if page == "Создать статью":
         with col2:
             if st.button("Рекомендации (LLM)"):
                 title_val = _state_str("create_title").strip()
-                content_val = content_input.strip()
+                content_val = _state_str("create_content").strip()
                 if not title_val and not content_val:
                     st.warning("Сначала заполни заголовок/текст.")
                 else:
@@ -390,39 +390,42 @@ elif page == "Редактировать статью":
     article_id = st.text_input("Article ID", "")
     title = st.text_input("Новый заголовок", "")
     tags = st.text_input("Новые теги (через запятую)", "")
-    content = markdown_editor("Новый текст статьи", key="edit_content", height=300)
+    markdown_editor("Новый текст статьи", key="edit_content", height=300)
 
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button("Сохранить изменения"):
+            content_val = _state_str("edit_content").strip()
             if not article_id.strip():
                 st.error("Укажи ID статьи.")
-            elif not title.strip() or not content.strip():
+            elif not title.strip() or not content_val:
                 st.error("Заполни заголовок и текст.")
             else:
                 try:
                     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-                    res = update_article(article_id.strip(), title.strip(), content.strip(), tag_list)
+                    res = update_article(article_id.strip(), title.strip(), content_val, tag_list)
                     st.success(f"Обновлено: {res['id']}")
                 except Exception as e:
                     st.error(str(e))
     with col2:
         if st.button("Рекомендации к статье (LLM)"):
-            if not title.strip() and not content.strip():
+            content_val = _state_str("edit_content").strip()
+            if not title.strip() and not content_val:
                 st.warning("Сначала заполни заголовок/текст.")
             else:
                 with st.spinner("Генерирую рекомендации..."):
                     logger.info("Manual LLM request on edit page")
-                    tips = llm_recommendations(title.strip(), content.strip())
+                    tips = llm_recommendations(title.strip(), content_val)
                 st.markdown("### Рекомендации")
                 st.markdown(tips)
 
     st.markdown("---")
     if st.button("Найти похожие статьи"):
-        if not title.strip() and not content.strip():
+        content_val = _state_str("edit_content").strip()
+        if not title.strip() and not content_val:
             st.warning("Сначала заполни заголовок/текст — по ним ищем похожие.")
         else:
-            related = suggest_related(title, content, exclude_id=article_id.strip(), top_k=10)
+            related = suggest_related(title, content_val, exclude_id=article_id.strip(), top_k=10)
             st.subheader("Похожие статьи")
             for hit in related:
                 st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
