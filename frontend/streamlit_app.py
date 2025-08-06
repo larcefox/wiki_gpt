@@ -205,7 +205,11 @@ def markdown_editor(
     </script>
     """
 
-    content = components.html(html, height=height + 80, key=f"{key}_html") or ""
+    # `components.html` does not support the Streamlit `key` parameter. Using it
+    # triggers `TypeError: IframeMixin._html() got an unexpected keyword` in
+    # recent Streamlit versions. The editor's ID already ensures uniqueness, so
+    # we simply drop the unsupported argument.
+    content = components.html(html, height=height + 80) or ""
 
     st.session_state[key] = content
     prev = st.session_state.get(prev_key, "")
