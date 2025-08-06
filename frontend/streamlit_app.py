@@ -324,7 +324,7 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
-        markdown_editor(
+        content_input = markdown_editor(
             "Текст статьи",
             key="create_content",
             height=300,
@@ -335,7 +335,7 @@ if page == "Создать статью":
         with col1:
             if st.button("Сохранить статью"):
                 title_val = _state_str("create_title").strip()
-                content_val = _state_str("create_content").strip()
+                content_val = content_input.strip()
                 if not title_val or not content_val:
                     st.error("Заполните заголовок и текст.")
                 else:
@@ -363,7 +363,7 @@ if page == "Создать статью":
         with col2:
             if st.button("Рекомендации (LLM)"):
                 title_val = _state_str("create_title").strip()
-                content_val = _state_str("create_content").strip()
+                content_val = content_input.strip()
                 if not title_val and not content_val:
                     st.warning("Сначала заполни заголовок/текст.")
                 else:
