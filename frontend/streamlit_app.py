@@ -164,7 +164,15 @@ def llm_recommendations(title: str, content: str) -> str:
 # ---------------------------
 # Markdown editor via streamlit-ace
 # ---------------------------
-def markdown_editor(label: str, key: str, *, height=300, placeholder=None, language="markdown"):
+def markdown_editor(
+    label: str,
+    key: str,
+    *,
+    height=300,
+    placeholder=None,
+    language="markdown",
+    on_change=None,
+):
     content = st_ace(
         placeholder=placeholder or "",
         language=language,
@@ -176,6 +184,7 @@ def markdown_editor(label: str, key: str, *, height=300, placeholder=None, langu
         show_print_margin=False,
         wrap=True,
         auto_update=True,
+        on_change=on_change,
     )
     return content or ""
 # ---------------------------
