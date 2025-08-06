@@ -234,6 +234,7 @@ def markdown_editor(
             scrolling=False,
             always_emit_events=True,
         )
+
     except TypeError:
         component_val = components.html(html, height=height + 80)
 
@@ -349,6 +350,7 @@ if page == "Создать статью":
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
         st.text_area(
+
             "Текст статьи",
             key="create_content",
             height=300,
