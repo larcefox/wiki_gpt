@@ -234,6 +234,7 @@ def markdown_editor(
             scrolling=False,
             always_emit_events=True,
         )
+
     except TypeError:
         component_val = components.html(html, height=height + 80)
 
@@ -443,7 +444,6 @@ elif page == "Редактировать статью":
                 st.success(f"Обновлено: {res['id']}")
             except Exception as e:
                 st.error(str(e))
-
     with col2:
         if st.button("Рекомендации к статье (LLM)"):
             content_val = _state_str("edit_content").strip()
