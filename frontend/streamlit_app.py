@@ -6,6 +6,7 @@ import logging
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
+from streamlit_ace import st_ace
 from dotenv import load_dotenv
 from streamlit.errors import StreamlitSecretNotFoundError
 try:
@@ -161,159 +162,22 @@ def llm_recommendations(title: str, content: str) -> str:
 
 
 # ---------------------------
-# Markdown helpers
+# Markdown editor via streamlit-ace
 # ---------------------------
-def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str | None = None, on_change=None):
-    """Render a text area with a simple Markdown toolbar."""
-    label_json = label.replace('"', '').replace("'", "")
-    components.html(
-        """
-        <div style='margin-bottom:4px'>
-            <button type=\"button\" id=\"bold\"><b>B</b></button>
-            <button type=\"button\" id=\"italic\"><i>I</i></button>
-            <button type=\"button\" id=\"heading\">H</button>
-            <button type=\"button\" id=\"ul\">•</button>
-            <button type=\"button\" id=\"ol\">1.</button>
-            <button type=\"button\" id=\"link\">🔗</button>
-            <button type=\"button\" id=\"code\">&lt;/&gt;</button>
-            <button type=\"button\" id=\"quote\">&gt;</button>
-            <button type=\"button\" id=\"hr\">─</button>
-        </div>
-        <script>
-        const getTextarea = () => window.parent.document.querySelector(`textarea[aria-label="${label_json}"]`);
-
-        function toggleWrap(prefix, suffix, placeholder='текст') {
-            const textarea = getTextarea();
-            if (!textarea) return;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const before = textarea.value.substring(0, start);
-            const selected = textarea.value.substring(start, end);
-            const after = textarea.value.substring(end);
-            if (selected.startsWith(prefix) && selected.endsWith(suffix) && selected) {
-                const newSelected = selected.slice(prefix.length, selected.length - suffix.length);
-                textarea.value = before + newSelected + after;
-                textarea.selectionStart = start;
-                textarea.selectionEnd = start + newSelected.length;
-            } else {
-                const content = selected || placeholder;
-                textarea.value = before + prefix + content + suffix + after;
-                textarea.selectionStart = start + prefix.length;
-                textarea.selectionEnd = start + prefix.length + content.length;
-            }
-            textarea.focus();
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        function toggleLinePrefix(prefix) {
-            const textarea = getTextarea();
-            if (!textarea) return;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const before = textarea.value.substring(0, start);
-            const selected = textarea.value.substring(start, end);
-            const after = textarea.value.substring(end);
-            const lines = selected.split('\\n');
-            const allHave = lines.every(line => line.startsWith(prefix));
-            let newSelected;
-            if (allHave) {
-                newSelected = lines.map(line => line.slice(prefix.length)).join('\\n');
-            } else {
-                newSelected = lines.map(line => prefix + line).join('\\n');
-            }
-            textarea.value = before + newSelected + after;
-            textarea.focus();
-            const newEnd = start + newSelected.length;
-            textarea.selectionStart = start;
-            textarea.selectionEnd = newEnd;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        function toggleOrderedList() {
-            const textarea = getTextarea();
-            if (!textarea) return;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const before = textarea.value.substring(0, start);
-            const selected = textarea.value.substring(start, end);
-            const after = textarea.value.substring(end);
-            const lines = selected.split('\\n');
-            const allNumbered = lines.every(line => /^\\d+\.\\s/.test(line));
-            let newSelected;
-            if (allNumbered) {
-                newSelected = lines.map(line => line.replace(/^\\d+\.\\s/, '')).join('\\n');
-            } else {
-                newSelected = lines.map((line, i) => `${i + 1}. ` + line).join('\\n');
-            }
-            textarea.value = before + newSelected + after;
-            textarea.focus();
-            const newEnd = start + newSelected.length;
-            textarea.selectionStart = start;
-            textarea.selectionEnd = newEnd;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        function insertLink() {
-            const textarea = getTextarea();
-            if (!textarea) return;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const before = textarea.value.substring(0, start);
-            const selected = textarea.value.substring(start, end) || 'текст';
-            const after = textarea.value.substring(end);
-            const snippet = `[${selected}](https://)`;
-            textarea.value = before + snippet + after;
-            const pos = before.length + snippet.length - 1;
-            textarea.focus();
-            textarea.selectionStart = pos;
-            textarea.selectionEnd = pos;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        function toggleCode() {
-            const textarea = getTextarea();
-            if (!textarea) return;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const selected = textarea.value.substring(start, end);
-            if (selected.includes('\\n')) {
-                toggleWrap('\\n```\\n', '\\n```\\n', 'код');
-            } else {
-                toggleWrap('`', '`', 'код');
-            }
-        }
-
-        function insertHorizontalRule() {
-            const textarea = getTextarea();
-            if (!textarea) return;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const before = textarea.value.substring(0, start);
-            const after = textarea.value.substring(end);
-            const snippet = '\\n---\\n';
-            textarea.value = before + snippet + after;
-            const pos = start + snippet.length;
-            textarea.focus();
-            textarea.selectionStart = textarea.selectionEnd = pos;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        window.addEventListener('load', () => {
-            document.getElementById('bold').addEventListener('click', e => { e.preventDefault(); toggleWrap('**','**','жирный текст'); });
-            document.getElementById('italic').addEventListener('click', e => { e.preventDefault(); toggleWrap('*','*','курсив'); });
-            document.getElementById('heading').addEventListener('click', e => { e.preventDefault(); toggleLinePrefix('# '); });
-            document.getElementById('ul').addEventListener('click', e => { e.preventDefault(); toggleLinePrefix('- '); });
-            document.getElementById('ol').addEventListener('click', e => { e.preventDefault(); toggleOrderedList(); });
-            document.getElementById('link').addEventListener('click', e => { e.preventDefault(); insertLink(); });
-            document.getElementById('code').addEventListener('click', e => { e.preventDefault(); toggleCode(); });
-            document.getElementById('quote').addEventListener('click', e => { e.preventDefault(); toggleLinePrefix('> '); });
-            document.getElementById('hr').addEventListener('click', e => { e.preventDefault(); insertHorizontalRule(); });
-        });
-        </script>
-        """.replace("${label_json}", label_json),
-        height=60,
+def markdown_editor(label: str, key: str, *, height=300, placeholder=None, language="markdown"):
+    content = st_ace(
+        placeholder=placeholder or "",
+        language=language,
+        theme="monokai",  # можно заменить на "github", "twilight" и т.д.
+        key=key,
+        height=height,
+        font_size=14,
+        show_gutter=False,
+        show_print_margin=False,
+        wrap=True,
+        auto_update=True,
     )
-    return st.text_area(label, key=key, height=height, placeholder=placeholder, on_change=on_change)
+    return content or ""
 # ---------------------------
 # Auth & UI
 # ---------------------------
