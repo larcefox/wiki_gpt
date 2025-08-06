@@ -210,11 +210,8 @@ def markdown_editor(
     </script>
     """
 
-    # `components.html` does not support the Streamlit `key` parameter. Using it
-    # triggers `TypeError: IframeMixin._html() got an unexpected keyword` in
-    # recent Streamlit versions. The editor's ID already ensures uniqueness, so
-    # we simply drop the unsupported argument.
-    component_val = components.html(html, height=height + 80)
+    # Use the `key` parameter so Streamlit treats each editor instance uniquely.
+    component_val = components.html(html, height=height + 80, key=key)
     content = component_val if isinstance(component_val, str) else _state_str(key)
 
     st.session_state[key] = content
@@ -336,6 +333,7 @@ if page == "Создать статью":
             if st.button("Сохранить статью"):
                 title_val = _state_str("create_title").strip()
                 content_val = _state_str("create_content").strip()
+                st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
                 if not title_val or not content_val:
                     st.error("Заполните заголовок и текст.")
                 else:
@@ -395,15 +393,18 @@ elif page == "Редактировать статью":
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button("Сохранить изменения"):
+            title_val = title.strip()
             content_val = _state_str("edit_content").strip()
+            st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
             if not article_id.strip():
                 st.error("Укажи ID статьи.")
-            elif not title.strip() or not content_val:
+            elif not title_val or not content_val:
+
                 st.error("Заполни заголовок и текст.")
             else:
                 try:
                     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-                    res = update_article(article_id.strip(), title.strip(), content_val, tag_list)
+                    res = update_article(article_id.strip(), title_val, content_val, tag_list)
                     st.success(f"Обновлено: {res['id']}")
                 except Exception as e:
                     st.error(str(e))
