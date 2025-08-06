@@ -210,8 +210,8 @@ def markdown_editor(
     </script>
     """
 
-    # Use the `key` parameter so Streamlit treats each editor instance uniquely.
-    component_val = components.html(html, height=height + 80, key=key)
+    # Render the editor and fetch its value.
+    component_val = components.html(html, height=height + 80)
     content = component_val if isinstance(component_val, str) else _state_str(key)
 
     st.session_state[key] = content
@@ -399,7 +399,6 @@ elif page == "Редактировать статью":
             if not article_id.strip():
                 st.error("Укажи ID статьи.")
             elif not title_val or not content_val:
-
                 st.error("Заполни заголовок и текст.")
             else:
                 try:
