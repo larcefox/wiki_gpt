@@ -351,34 +351,39 @@ if page == "Создать статью":
         )
         col1, col2 = st.columns([1, 1])
         with col1:
-            if st.button("Сохранить статью"):
-                title_val = _state_str("create_title").strip()
-                content_val = _state_str("create_content").strip()
-                st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
-                if not title_val or not content_val:
-                    st.error("Заполните заголовок и текст.")
-                else:
-                    try:
-                        tag_list = [
-                            t.strip()
-                            for t in _state_str("create_tags").split(",")
-                            if t.strip()
-                        ]
-                        res = create_article(title_val, content_val, tag_list)
-                        st.success(f"Создано! ID: {res['id']}")
-                        with st.expander("Похожие статьи сразу после сохранения"):
-                            related = suggest_related(
-                                title_val, content_val, exclude_id=res['id'], top_k=5
+            if st.button("Сохранить статью", key="create_save"):
+                st.session_state.create_submit = True
+                st.rerun()
+
+        if st.session_state.pop("create_submit", False):
+            title_val = _state_str("create_title").strip()
+            content_val = _state_str("create_content").strip()
+            st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
+            if not title_val or not content_val:
+                st.error("Заполните заголовок и текст.")
+            else:
+                try:
+                    tag_list = [
+                        t.strip()
+                        for t in _state_str("create_tags").split(",")
+                        if t.strip()
+                    ]
+                    res = create_article(title_val, content_val, tag_list)
+                    st.success(f"Создано! ID: {res['id']}")
+                    with st.expander("Похожие статьи сразу после сохранения"):
+                        related = suggest_related(
+                            title_val, content_val, exclude_id=res['id'], top_k=5
+                        )
+                        for hit in related:
+                            st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
+                            st.caption(
+                                f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}"
                             )
-                            for hit in related:
-                                st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
-                                st.caption(
-                                    f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}"
-                                )
-                                st.write(hit["content"])
-                                st.markdown("---")
-                    except Exception as e:
-                        st.error(str(e))
+                            st.write(hit["content"])
+                            st.markdown("---")
+                except Exception as e:
+                    st.error(str(e))
+
         with col2:
             if st.button("Рекомендации (LLM)"):
                 title_val = _state_str("create_title").strip()
@@ -413,21 +418,25 @@ elif page == "Редактировать статью":
 
     col1, col2 = st.columns([1, 1])
     with col1:
-        if st.button("Сохранить изменения"):
-            title_val = title.strip()
-            content_val = _state_str("edit_content").strip()
-            st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
-            if not article_id.strip():
-                st.error("Укажи ID статьи.")
-            elif not title_val or not content_val:
-                st.error("Заполни заголовок и текст.")
-            else:
-                try:
-                    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-                    res = update_article(article_id.strip(), title_val, content_val, tag_list)
-                    st.success(f"Обновлено: {res['id']}")
-                except Exception as e:
-                    st.error(str(e))
+        if st.button("Сохранить изменения", key="edit_save"):
+            st.session_state.edit_submit = True
+            st.rerun()
+
+    if st.session_state.pop("edit_submit", False):
+        title_val = title.strip()
+        content_val = _state_str("edit_content").strip()
+        st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
+        if not article_id.strip():
+            st.error("Укажи ID статьи.")
+        elif not title_val or not content_val:
+            st.error("Заполни заголовок и текст.")
+        else:
+            try:
+                tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+                res = update_article(article_id.strip(), title_val, content_val, tag_list)
+                st.success(f"Обновлено: {res['id']}")
+            except Exception as e:
+                st.error(str(e))
     with col2:
         if st.button("Рекомендации к статье (LLM)"):
             content_val = _state_str("edit_content").strip()
