@@ -167,7 +167,7 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
     """Render a text area with a simple Markdown toolbar."""
     label_json = json.dumps(label)
     components.html(
-        f"""
+        """
         <div style='margin-bottom:4px'>
             <button type=\"button\" id=\"bold\"><b>B</b></button>
             <button type=\"button\" id=\"italic\"><i>I</i></button>
@@ -310,7 +310,7 @@ def markdown_editor(label: str, key: str, *, height: int = 300, placeholder: str
             document.getElementById('hr').addEventListener('click', e => { e.preventDefault(); insertHorizontalRule(); });
         });
         </script>
-        """,
+        """.replace("{label_json}", label_json),
         height=60,
     )
     return st.text_area(label, key=key, height=height, placeholder=placeholder, on_change=on_change)
