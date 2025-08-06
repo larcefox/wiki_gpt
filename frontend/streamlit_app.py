@@ -38,6 +38,11 @@ st.set_page_config(page_title="Wiki GPT – Frontend", layout="wide")
 # ---------------------------
 # Helpers
 # ---------------------------
+def _state_str(key: str) -> str:
+    """Return string value from session state or empty string."""
+    val = st.session_state.get(key, "")
+    return val if isinstance(val, str) else ""
+
 def api_request(method: str, path: str, payload: dict | None = None, retry: bool = True):
     url = f"{API_BASE}{path}"
     headers = {}
@@ -175,7 +180,7 @@ def markdown_editor(
     st.markdown(f"#### {label}")
 
     prev_key = f"{key}__prev"
-    initial = st.session_state.get(key, "")
+    initial = _state_str(key)
     # EasyMDE provides a markdown editor with a toolbar loaded from CDN
     editor_id = f"editor_{key}"
     html = f"""
@@ -209,10 +214,11 @@ def markdown_editor(
     # triggers `TypeError: IframeMixin._html() got an unexpected keyword` in
     # recent Streamlit versions. The editor's ID already ensures uniqueness, so
     # we simply drop the unsupported argument.
-    content = components.html(html, height=height + 80) or ""
+    component_val = components.html(html, height=height + 80)
+    content = component_val if isinstance(component_val, str) else _state_str(key)
 
     st.session_state[key] = content
-    prev = st.session_state.get(prev_key, "")
+    prev = _state_str(prev_key)
     if on_change and content != prev:
         on_change()
     st.session_state[prev_key] = content
@@ -301,8 +307,8 @@ if page == "Создать статью":
             st.session_state.llm_timer.cancel()
 
         def run():
-            title = st.session_state.get("create_title", "").strip()
-            content = st.session_state.get("create_content", "").strip()
+            title = _state_str("create_title").strip()
+            content = _state_str("create_content").strip()
             if not title and not content:
                 st.session_state.llm_tips = ""
             else:
@@ -328,15 +334,15 @@ if page == "Создать статью":
         col1, col2 = st.columns([1, 1])
         with col1:
             if st.button("Сохранить статью"):
-                title_val = st.session_state.create_title.strip()
-                content_val = st.session_state.create_content.strip()
+                title_val = _state_str("create_title").strip()
+                content_val = _state_str("create_content").strip()
                 if not title_val or not content_val:
                     st.error("Заполните заголовок и текст.")
                 else:
                     try:
                         tag_list = [
                             t.strip()
-                            for t in st.session_state.create_tags.split(",")
+                            for t in _state_str("create_tags").split(",")
                             if t.strip()
                         ]
                         res = create_article(title_val, content_val, tag_list)
@@ -356,8 +362,8 @@ if page == "Создать статью":
                         st.error(str(e))
         with col2:
             if st.button("Рекомендации (LLM)"):
-                title_val = st.session_state.create_title.strip()
-                content_val = st.session_state.create_content.strip()
+                title_val = _state_str("create_title").strip()
+                content_val = _state_str("create_content").strip()
                 if not title_val and not content_val:
                     st.warning("Сначала заполни заголовок/текст.")
                 else:
