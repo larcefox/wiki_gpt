@@ -9,3 +9,4 @@ requests
 PyJWT
 passlib[bcrypt]
 email-validator
+streamlit-quill
