@@ -173,6 +173,7 @@ def markdown_editor(
     language="markdown",
     on_change=None,
 ):
+    prev_content = st.session_state.get(key, "")
     content = st_ace(
         placeholder=placeholder or "",
         language=language,
@@ -184,8 +185,9 @@ def markdown_editor(
         show_print_margin=False,
         wrap=True,
         auto_update=True,
-        on_change=on_change,
     )
+    if on_change and content != prev_content:
+        on_change()
     return content or ""
 # ---------------------------
 # Auth & UI
