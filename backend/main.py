@@ -3,7 +3,7 @@ from uuid import UUID
 from typing import List
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text
-from db import get_db, SessionLocal, engine
+from db import get_db, SessionLocal, engine, wait_for_db
 from models import Article, ArticleVersion, ArticleGroup, Base
 from auth import router as auth_router, require_roles, init_roles
 from qdrant_utils import (
@@ -25,6 +25,7 @@ from schemas import (
     ArticleGroupOut,
 )
 
+wait_for_db()
 Base.metadata.create_all(bind=engine)
 
 
