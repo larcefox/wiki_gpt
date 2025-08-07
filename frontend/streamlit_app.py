@@ -6,7 +6,7 @@ import logging
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_quill import quill
+from streamlit_quill import st_quill
 from dotenv import load_dotenv
 from streamlit.errors import StreamlitSecretNotFoundError
 
@@ -375,7 +375,7 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
-        content = quill(
+        content = st_quill(
             value=_state_str("create_content"),
             html=True,
             placeholder="Напишите статью...",
