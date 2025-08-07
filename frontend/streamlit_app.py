@@ -191,7 +191,10 @@ def render_sidebar_tree() -> None:
                             st.session_state.view_article = None
                             st.session_state.view_history = None
                         st.session_state.page = "Статья по ID"
-                        st.experimental_rerun()
+                        if hasattr(st, "rerun"):
+                            st.rerun()
+                        else:  # pragma: no cover - for older Streamlit versions
+                            st.experimental_rerun()
                 show(node.get("children", []))
 
     show(tree)
