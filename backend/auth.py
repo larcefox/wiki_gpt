@@ -106,6 +106,11 @@ def require_roles(required_roles: List[str]):
     return role_checker
 
 
+def check_admin_role(user: User = Depends(require_roles(["admin"]))) -> User:
+    """Dependency that ensures the current user has the admin role."""
+    return user
+
+
 @router.post("/register", response_model=RegisterResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == user.email).first()

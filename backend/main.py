@@ -1,11 +1,11 @@
-from fastapi import Body, Depends, FastAPI, HTTPException
+from fastapi import Body, Depends, FastAPI, HTTPException, APIRouter
 from uuid import UUID
 from typing import List
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text
 from db import get_db, SessionLocal, engine, wait_for_db
-from models import Article, ArticleVersion, ArticleGroup, Base
-from auth import router as auth_router, require_roles, init_roles
+from models import Article, ArticleVersion, ArticleGroup, Base, User, Role
+from auth import router as auth_router, require_roles, init_roles, check_admin_role, get_password_hash
 from qdrant_utils import (
     embed_text,
     ensure_collection,
@@ -23,6 +23,9 @@ from schemas import (
     ArticleSearchQuery,
     ArticleGroupCreate,
     ArticleGroupOut,
+    AdminUserOut,
+    RoleUpdateRequest,
+    PasswordResetRequest,
 )
 
 wait_for_db()
@@ -63,6 +66,67 @@ init_roles()
 
 app = FastAPI()
 app.include_router(auth_router, prefix="/auth")
+
+admin_router = APIRouter(prefix="/admin")
+
+
+@admin_router.get("/users", response_model=List[AdminUserOut])
+def list_users(db: Session = Depends(get_db), current_user=Depends(check_admin_role)):
+    users = db.query(User).all()
+    return [
+        AdminUserOut(
+            id=u.id,
+            email=u.email,
+            roles=[r.code for r in u.roles],
+            is_active=u.is_active,
+            created_at=u.created_at,
+        )
+        for u in users
+    ]
+
+
+@admin_router.post("/users/{user_id}/roles")
+def update_user_roles(
+    user_id: UUID,
+    req: RoleUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(check_admin_role),
+):
+    if current_user.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot modify own roles")
+    allowed = {"admin", "author", "reader"}
+    if not set(req.roles).issubset(allowed):
+        raise HTTPException(status_code=400, detail="Unknown roles")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.roles = []
+    for code in req.roles:
+        role = db.query(Role).filter(Role.code == code).first()
+        if role:
+            user.roles.append(role)
+    db.commit()
+    return {"status": "ok"}
+
+
+@admin_router.post("/users/{user_id}/password")
+def reset_user_password(
+    user_id: UUID,
+    req: PasswordResetRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(check_admin_role),
+):
+    if current_user.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot modify own password")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.password_hash = get_password_hash(req.new_password)
+    db.commit()
+    return {"status": "ok"}
+
+
+app.include_router(admin_router)
 
 
 @app.post("/groups/", response_model=ArticleGroupOut)
