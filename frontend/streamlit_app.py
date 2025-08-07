@@ -594,17 +594,19 @@ elif page == "Панель администратора":
             c1.write(u["email"])
             disabled = u["id"] == st.session_state["user"]["id"]
             roles_sel = c2.multiselect(
-                "",
+                "Roles",
                 ["admin", "author", "reader"],
                 default=u.get("roles", []),
                 key=f"roles_{u['id']}",
                 disabled=disabled,
+                label_visibility="collapsed",
             )
             new_pass = c3.text_input(
-                "",
+                "New password",
                 type="password",
                 key=f"pwd_{u['id']}",
                 disabled=disabled,
+                label_visibility="collapsed",
             )
             if c4.button("Сохранить", key=f"save_{u['id']}", disabled=disabled):
                 try:
