@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, constr
 from uuid import UUID
 from typing import List, Optional
+from datetime import datetime
 
 class ArticleCreate(BaseModel):
     title: str
@@ -89,6 +90,25 @@ class UserOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class AdminUserOut(BaseModel):
+    id: UUID
+    email: EmailStr
+    roles: List[str] = []
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class RoleUpdateRequest(BaseModel):
+    roles: List[str]
+
+
+class PasswordResetRequest(BaseModel):
+    new_password: constr(min_length=8)
 
 
 class RegisterResponse(BaseModel):

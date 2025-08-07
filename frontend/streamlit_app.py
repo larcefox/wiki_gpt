@@ -122,6 +122,20 @@ def get_history(article_id: str):
     return api_get(f"/articles/{article_id}/history")
 
 
+def admin_list_users():
+    return api_get("/admin/users")
+
+
+def admin_update_roles(user_id: str, roles: list[str]):
+    return api_post(f"/admin/users/{user_id}/roles", {"roles": roles})
+
+
+def admin_reset_password(user_id: str, new_password: str):
+    return api_post(
+        f"/admin/users/{user_id}/password", {"new_password": new_password}
+    )
+
+
 def suggest_related(
     title: str, content: str, exclude_id: str | None = None, top_k: int = 5
 ):
@@ -327,7 +341,7 @@ if "author" in roles or "admin" in roles:
 if any(r in roles for r in ["reader", "author", "admin"]):
     options += ["Поиск", "Статья по ID"]
 if "admin" in roles:
-    options += ["Диагностика"]
+    options += ["Панель администратора", "Диагностика"]
 page = st.sidebar.radio("Навигация", options)
 
 st.sidebar.markdown("---")
@@ -561,8 +575,51 @@ elif page == "Статья по ID":
             else:
                 st.info("История пуста")
 
+# --- Панель администратора ---
+elif page == "Панель администратора":
+    st.header("Панель администратора")
+    try:
+        users = admin_list_users()
+    except Exception as e:
+        st.error(str(e))
+        users = []
+    if users:
+        header_cols = st.columns([3, 3, 3, 2])
+        header_cols[0].write("Email")
+        header_cols[1].write("Роли")
+        header_cols[2].write("Новый пароль")
+        header_cols[3].write("Действие")
+        for u in users:
+            c1, c2, c3, c4 = st.columns([3, 3, 3, 2])
+            c1.write(u["email"])
+            disabled = u["id"] == st.session_state["user"]["id"]
+            roles_sel = c2.multiselect(
+                "",
+                ["admin", "author", "reader"],
+                default=u.get("roles", []),
+                key=f"roles_{u['id']}",
+                disabled=disabled,
+            )
+            new_pass = c3.text_input(
+                "",
+                type="password",
+                key=f"pwd_{u['id']}",
+                disabled=disabled,
+            )
+            if c4.button("Сохранить", key=f"save_{u['id']}", disabled=disabled):
+                try:
+                    admin_update_roles(u["id"], roles_sel)
+                    if new_pass:
+                        admin_reset_password(u["id"], new_pass)
+                    st.success("Обновлено")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+    else:
+        st.info("Нет пользователей")
+
 # --- Диагностика ---
-else:
+elif page == "Диагностика":
     st.header("Диагностика")
     st.write("Проверка окружения:")
     st.json(
