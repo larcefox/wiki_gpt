@@ -379,7 +379,7 @@ if page == "Создать статью":
             value=_state_str("create_content"),
             html=True,
             placeholder="Напишите статью...",
-            key="create_content",
+            key="create_content_editor",
         )
 
         if content is not None:
