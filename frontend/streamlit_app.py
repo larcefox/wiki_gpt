@@ -102,10 +102,18 @@ def search_articles(query: str, tags=None, group_id: str | None = None):
     return api_post("/articles/search/", payload)
 
 
-def create_article(title: str, content: str, tags, group_id: str | None = None):
+def create_article(
+    title: str,
+    content: str,
+    tags,
+    group_id: str | None = None,
+    group: dict | None = None,
+):
     payload = {"title": title, "content": content, "tags": tags}
     if group_id:
         payload["group_id"] = group_id
+    if group:
+        payload["group"] = group
     return api_post("/articles/", payload)
 
 
@@ -445,12 +453,18 @@ if page == "Создать статью":
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
         group_opts = fetch_group_options("Без группы")
+        group_opts.append(("__new__", "Создать новую группу"))
         st.selectbox(
             "Группа",
             group_opts,
             format_func=lambda x: x[1],
             key="create_group",
         )
+        if (
+            isinstance(st.session_state.get("create_group"), tuple)
+            and st.session_state["create_group"][0] == "__new__"
+        ):
+            st.text_input("Название новой группы", key="new_group_name")
         content = st_quill(
             value=_state_str("create_content"),
             html=True,
@@ -480,9 +494,18 @@ if page == "Создать статью":
                         if t.strip()
                     ]
                     group_id = None
-                    if isinstance(st.session_state.get("create_group"), tuple):
-                        group_id = st.session_state["create_group"][0]
-                    res = create_article(title_val, content_val, tag_list, group_id)
+                    group = None
+                    sel = st.session_state.get("create_group")
+                    if isinstance(sel, tuple):
+                        if sel[0] == "__new__":
+                            name = _state_str("new_group_name").strip()
+                            if not name:
+                                st.error("Введите название группы")
+                                st.stop()
+                            group = {"name": name}
+                        else:
+                            group_id = sel[0]
+                    res = create_article(title_val, content_val, tag_list, group_id, group)
                     st.success(f"Создано! ID: {res['id']}")
                     with st.expander("Похожие статьи сразу после сохранения"):
                         related = suggest_related(
