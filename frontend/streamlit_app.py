@@ -93,21 +93,27 @@ def api_delete(path: str):
     return api_request("delete", path)
 
 
-def search_articles(query: str, tags=None):
+def search_articles(query: str, tags=None, group_id: str | None = None):
     payload = {"q": query}
     if tags:
         payload["tags"] = tags
+    if group_id:
+        payload["group_id"] = group_id
     return api_post("/articles/search/", payload)
 
 
-def create_article(title: str, content: str, tags):
-    return api_post("/articles/", {"title": title, "content": content, "tags": tags})
+def create_article(title: str, content: str, tags, group_id: str | None = None):
+    payload = {"title": title, "content": content, "tags": tags}
+    if group_id:
+        payload["group_id"] = group_id
+    return api_post("/articles/", payload)
 
 
-def update_article(article_id: str, title: str, content: str, tags):
-    return api_put(
-        f"/articles/{article_id}", {"title": title, "content": content, "tags": tags}
-    )
+def update_article(article_id: str, title: str, content: str, tags, group_id: str | None = None):
+    payload = {"title": title, "content": content, "tags": tags}
+    if group_id:
+        payload["group_id"] = group_id
+    return api_put(f"/articles/{article_id}", payload)
 
 
 def get_article(article_id: str):
@@ -134,6 +140,53 @@ def admin_reset_password(user_id: str, new_password: str):
     return api_post(
         f"/admin/users/{user_id}/password", {"new_password": new_password}
     )
+
+
+def fetch_group_options(include_none: str | None = None):
+    try:
+        groups = api_get("/article-groups/flat")
+    except Exception:
+        groups = []
+    children: dict[str | None, list[dict]] = {}
+    for g in groups:
+        children.setdefault(g.get("parent_id"), []).append(g)
+    result: list[tuple[str | None, str]] = []
+
+    def visit(parent_id: str | None, level: int) -> None:
+        for g in sorted(children.get(parent_id, []), key=lambda x: x.get("order") or 0):
+            result.append((g["id"], "  " * level + g["name"]))
+            visit(g["id"], level + 1)
+
+    visit(None, 0)
+    if include_none is not None:
+        result = [(None, include_none)] + result
+    return result
+
+
+def render_sidebar_tree() -> None:
+    try:
+        tree = api_get("/article-groups/tree")
+    except Exception:
+        tree = []
+    st.sidebar.markdown("### Разделы")
+
+    def show(nodes: list[dict]) -> None:
+        for node in nodes:
+            with st.sidebar.expander(node["name"], expanded=False):
+                for art in node.get("articles", []):
+                    if st.button(art["title"], key=f"sb_{art['id']}"):
+                        st.session_state.view_id = art["id"]
+                        try:
+                            st.session_state.view_article = get_article(art["id"])
+                            st.session_state.view_history = get_history(art["id"])
+                        except Exception:
+                            st.session_state.view_article = None
+                            st.session_state.view_history = None
+                        st.session_state.page = "Статья по ID"
+                        st.experimental_rerun()
+                show(node.get("children", []))
+
+    show(tree)
 
 
 def suggest_related(
@@ -335,6 +388,8 @@ if st.sidebar.button("Выйти"):
         st.session_state.pop(k, None)
     st.rerun()
 
+render_sidebar_tree()
+
 options: list[str] = []
 if "author" in roles or "admin" in roles:
     options += ["Создать статью", "Редактировать статью"]
@@ -342,7 +397,7 @@ if any(r in roles for r in ["reader", "author", "admin"]):
     options += ["Поиск", "Статья по ID"]
 if "admin" in roles:
     options += ["Панель администратора", "Диагностика"]
-page = st.sidebar.radio("Навигация", options)
+page = st.sidebar.radio("Навигация", options, key="page")
 
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Backend: {API_BASE}")
@@ -389,6 +444,13 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
+        group_opts = fetch_group_options("Без группы")
+        st.selectbox(
+            "Группа",
+            group_opts,
+            format_func=lambda x: x[1],
+            key="create_group",
+        )
         content = st_quill(
             value=_state_str("create_content"),
             html=True,
@@ -417,7 +479,10 @@ if page == "Создать статью":
                         for t in _state_str("create_tags").split(",")
                         if t.strip()
                     ]
-                    res = create_article(title_val, content_val, tag_list)
+                    group_id = None
+                    if isinstance(st.session_state.get("create_group"), tuple):
+                        group_id = st.session_state["create_group"][0]
+                    res = create_article(title_val, content_val, tag_list, group_id)
                     st.success(f"Создано! ID: {res['id']}")
                     with st.expander("Похожие статьи сразу после сохранения"):
                         related = suggest_related(
@@ -467,6 +532,13 @@ elif page == "Редактировать статью":
     article_id = st.text_input("Article ID", "")
     title = st.text_input("Новый заголовок", "")
     tags = st.text_input("Новые теги (через запятую)", "")
+    group_opts = fetch_group_options("Без группы")
+    st.selectbox(
+        "Группа",
+        group_opts,
+        format_func=lambda x: x[1],
+        key="edit_group",
+    )
     markdown_editor("Новый текст статьи", key="edit_content", height=300)
 
     col1, col2 = st.columns([1, 1])
@@ -486,8 +558,11 @@ elif page == "Редактировать статью":
         else:
             try:
                 tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+                group_id = None
+                if isinstance(st.session_state.get("edit_group"), tuple):
+                    group_id = st.session_state["edit_group"][0]
                 res = update_article(
-                    article_id.strip(), title_val, content_val, tag_list
+                    article_id.strip(), title_val, content_val, tag_list, group_id
                 )
                 st.success(f"Обновлено: {res['id']}")
             except Exception as e:
@@ -526,11 +601,21 @@ elif page == "Поиск":
     st.header("Поиск по базе знаний")
     q = st.text_input("Запрос", placeholder="например: YandexGPT эмбеддинги")
     tags_filter = st.text_input("Фильтр по тегам (через запятую)", "")
+    group_opts = fetch_group_options("Любая")
+    selected_group = st.selectbox(
+        "Группа",
+        group_opts,
+        format_func=lambda x: x[1],
+        key="search_group",
+    )
     topk = st.slider("Сколько результатов показать", 1, 20, 5)
     if st.button("Искать") and q.strip():
         try:
             tag_list = [t.strip() for t in tags_filter.split(",") if t.strip()]
-            results = search_articles(q.strip(), tag_list)[:topk]
+            group_id = None
+            if isinstance(selected_group, tuple):
+                group_id = selected_group[0]
+            results = search_articles(q.strip(), tag_list, group_id)[:topk]
             st.subheader("Результаты")
             for hit in results:
                 st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")

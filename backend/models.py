@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Boolean, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -55,6 +55,11 @@ class ArticleGroup(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("article_groups.id"), nullable=True)
+    prompt_template = Column(Text, nullable=True)
+    order = Column(Integer, nullable=True)
+
+    parent = relationship("ArticleGroup", remote_side=[id], backref="children")
 
     articles = relationship("Article", back_populates="group")
 

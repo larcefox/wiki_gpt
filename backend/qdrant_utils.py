@@ -97,6 +97,7 @@ def search_vector(vector: List[float], db: Session, team_id, limit: int = 5) -> 
             content=a.content,
             score=scores[str(a.id)],
             tags=a.tags.split(",") if a.tags else [],
+            group_id=a.group_id,
         )
         for a in articles
     ]
