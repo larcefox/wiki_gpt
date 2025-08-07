@@ -8,6 +8,7 @@ class ArticleCreate(BaseModel):
     content: str
     tags: List[str] = []
     group_id: Optional[UUID] = None
+    group: Optional["ArticleGroupIn"] = None
 
 
 class ArticleUpdate(BaseModel):
@@ -133,3 +134,4 @@ class RegisterResponse(BaseModel):
 
 ArticleGroupTreeNode.update_forward_refs()
 ArticleWithGroup.update_forward_refs()
+ArticleCreate.update_forward_refs()

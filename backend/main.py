@@ -314,11 +314,24 @@ def create_article(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(["author"])),
 ):
+    group_id = article.group_id
+    if group_id is None and article.group is not None:
+        db_group = ArticleGroup(
+            name=article.group.name,
+            description=article.group.description,
+            parent_id=article.group.parent_id,
+            prompt_template=article.group.prompt_template,
+            order=article.group.order,
+        )
+        db.add(db_group)
+        db.flush()
+        group_id = db_group.id
+
     db_article = Article(
         title=article.title,
         content=article.content,
         tags=",".join(article.tags),
-        group_id=article.group_id,
+        group_id=group_id,
         team_id=current_user.team_id,
     )
     db.add(db_article)
