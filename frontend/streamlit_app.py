@@ -565,7 +565,15 @@ elif page == "Редактировать статью":
         format_func=lambda x: x[1],
         key="edit_group",
     )
-    markdown_editor("Новый текст статьи", key="edit_content", height=300)
+    content = st_quill(
+        value=_state_str("edit_content"),
+        html=True,
+        placeholder="Напишите статью...",
+        key="edit_content_editor",
+    )
+
+    if content is not None:
+        st.session_state["edit_content"] = content
 
     col1, col2 = st.columns([1, 1])
     with col1:
