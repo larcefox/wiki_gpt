@@ -32,6 +32,7 @@ class ArticleSearchHit(BaseModel):
     content: str
     score: float
     tags: List[str] = []
+    group_id: Optional[UUID] = None
 
 
 class ArticleVersionOut(BaseModel):
@@ -46,20 +47,31 @@ class ArticleVersionOut(BaseModel):
 class ArticleSearchQuery(BaseModel):
     q: str
     tags: Optional[List[str]] = None
+    group_id: Optional[UUID] = None
 
 
-class ArticleGroupCreate(BaseModel):
+class ArticleGroupIn(BaseModel):
     name: str
     description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    prompt_template: Optional[str] = None
+    order: Optional[int] = None
 
 
-class ArticleGroupOut(BaseModel):
+class ArticleGroupOut(ArticleGroupIn):
     id: UUID
-    name: str
-    description: Optional[str]
 
     class Config:
         orm_mode = True
+
+
+class ArticleGroupTreeNode(ArticleGroupOut):
+    children: List["ArticleGroupTreeNode"] = []
+    articles: List["ArticleOut"] = []
+
+
+class ArticleWithGroup(ArticleOut):
+    group: Optional[ArticleGroupOut] = None
 
 
 class UserCreate(BaseModel):
@@ -117,3 +129,7 @@ class RegisterResponse(BaseModel):
     team_id: UUID
     access_token: str
     refresh_token: str
+
+
+ArticleGroupTreeNode.update_forward_refs()
+ArticleWithGroup.update_forward_refs()
