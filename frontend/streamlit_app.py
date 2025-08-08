@@ -47,6 +47,22 @@ def _state_str(key: str) -> str:
     return val if isinstance(val, str) else ""
 
 
+def render_article_editor(
+    state_key: str, editor_key: str, placeholder: str = "Напишите статью."
+):
+    """Unified article editor bound to session_state."""
+
+    content = st_quill(
+        value=_state_str(state_key),
+        html=True,
+        placeholder=placeholder,
+        key=editor_key,
+    )
+    if content is not None:
+        st.session_state[state_key] = content
+    return _state_str(state_key)
+
+
 def api_request(
     method: str, path: str, payload: dict | None = None, retry: bool = True
 ):
@@ -468,15 +484,7 @@ if page == "Создать статью":
             and st.session_state["create_group"][0] == "__new__"
         ):
             st.text_input("Название новой группы", key="new_group_name")
-        content = st_quill(
-            value=_state_str("create_content"),
-            html=True,
-            placeholder="Напишите статью...",
-            key="create_content_editor",
-        )
-
-        if content is not None:
-            st.session_state["create_content"] = content
+        render_article_editor("create_content", "create_content_editor")
         col1, col2 = st.columns([1, 1])
         with col1:
             if st.button("Сохранить статью", key="create_save"):
@@ -565,15 +573,7 @@ elif page == "Редактировать статью":
         format_func=lambda x: x[1],
         key="edit_group",
     )
-    content = st_quill(
-        value=_state_str("edit_content"),
-        html=True,
-        placeholder="Напишите статью...",
-        key="edit_content_editor",
-    )
-
-    if content is not None:
-        st.session_state["edit_content"] = content
+    render_article_editor("edit_content", "edit_content_editor")
 
     col1, col2 = st.columns([1, 1])
     with col1:
