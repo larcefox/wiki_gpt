@@ -579,10 +579,27 @@ if page == "Создать статью":
 elif page == "Редактировать статью":
     st.header("Редактировать статью")
     st.caption("Укажи ID статьи (можно взять из результата создания/поиска).")
-    article_id = st.text_input("Article ID", "")
-    title = st.text_input("Новый заголовок", "")
-    tags = st.text_input("Новые теги (через запятую)", "")
     group_opts = fetch_group_options("Без группы")
+    article_id = st.text_input("Article ID", key="edit_article_id")
+
+    if article_id.strip() and st.session_state.get("edit_loaded_id") != article_id.strip():
+        try:
+            art = get_article(article_id.strip())
+            st.session_state["edit_title"] = art["title"]
+            st.session_state["edit_tags"] = ", ".join(art.get("tags", []))
+            st.session_state["edit_content"] = art["content"]
+            for opt in group_opts:
+                if opt[0] == art.get("group_id"):
+                    st.session_state["edit_group"] = opt
+                    break
+            else:
+                st.session_state["edit_group"] = group_opts[0]
+            st.session_state["edit_loaded_id"] = article_id.strip()
+        except Exception as e:
+            st.error(str(e))
+
+    title = st.text_input("Новый заголовок", key="edit_title")
+    tags = st.text_input("Новые теги (через запятую)", key="edit_tags")
     st.selectbox(
         "Группа",
         group_opts,
