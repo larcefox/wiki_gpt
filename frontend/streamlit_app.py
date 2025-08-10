@@ -194,26 +194,42 @@ def render_sidebar_tree() -> None:
         tree = []
     st.sidebar.markdown("### Разделы")
 
+    def _open_article(art: dict) -> None:
+        st.session_state.view_id = art["id"]
+        try:
+            st.session_state.view_article = get_article(art["id"])
+            st.session_state.view_history = get_history(art["id"])
+        except Exception:
+            st.session_state.view_article = None
+            st.session_state.view_history = None
+        st.session_state.page = "Статья по ID"
+        if hasattr(st, "rerun"):
+            st.rerun()
+        else:  # pragma: no cover - for older Streamlit versions
+            st.experimental_rerun()
+
+    def _article_button(art: dict) -> None:
+        if st.button(art["title"], key=f"sb_{art['id']}"):
+            _open_article(art)
+
     def show(nodes: list[dict]) -> None:
         for node in nodes:
             with st.sidebar.expander(node["name"], expanded=False):
                 for art in node.get("articles", []):
-                    if st.button(art["title"], key=f"sb_{art['id']}"):
-                        st.session_state.view_id = art["id"]
-                        try:
-                            st.session_state.view_article = get_article(art["id"])
-                            st.session_state.view_history = get_history(art["id"])
-                        except Exception:
-                            st.session_state.view_article = None
-                            st.session_state.view_history = None
-                        st.session_state.page = "Статья по ID"
-                        if hasattr(st, "rerun"):
-                            st.rerun()
-                        else:  # pragma: no cover - for older Streamlit versions
-                            st.experimental_rerun()
+                    _article_button(art)
                 show(node.get("children", []))
 
     show(tree)
+
+    try:
+        articles = api_get("/articles/")
+        ungrouped = [a for a in articles if not a.get("group_id")]
+    except Exception:
+        ungrouped = []
+    if ungrouped:
+        with st.sidebar.expander("Без группы", expanded=False):
+            for art in ungrouped:
+                _article_button(art)
 
 
 def suggest_related(
