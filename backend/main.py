@@ -193,7 +193,15 @@ def get_team(
     team = db.query(Team).filter(Team.id == team_id).first()
     if not team or team not in current_user.teams:
         raise HTTPException(status_code=404, detail="Team not found")
-    return TeamWithUsers(id=team.id, name=team.name, users=team.users)
+
+    # When returning SQLAlchemy models, we need to explicitly validate them
+    # against the Pydantic schema so that nested relationships (like the team
+    # users) are converted properly.  Constructing ``TeamWithUsers`` directly
+    # with ``team.users`` would pass through the ``models.User`` instances
+    # unchanged, leading to a validation error under Pydantic v2.  Using
+    # ``model_validate`` with ``from_attributes=True`` tells Pydantic to read
+    # data from object attributes and recursively convert nested models.
+    return TeamWithUsers.model_validate(team, from_attributes=True)
 
 
 @team_router.post("/{team_id}/invite")
