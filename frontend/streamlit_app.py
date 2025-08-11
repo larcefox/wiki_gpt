@@ -817,7 +817,7 @@ elif page == "Поиск":
             for hit in results:
                 st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
                 st.caption(f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}")
-                st.write(hit["content"])
+                st.markdown(hit["content"], unsafe_allow_html=True)
                 st.markdown("---")
         except Exception as e:
             st.error(str(e))
@@ -840,7 +840,7 @@ elif page == "Статья по ID":
         tabs = st.tabs(["Статья", "История"])
         with tabs[0]:
             st.subheader(article["title"])
-            st.write(article["content"])
+            st.markdown(article["content"], unsafe_allow_html=True)
             st.caption(f"Теги: {', '.join(article.get('tags', []))}")
             if "author" in roles or "admin" in roles:
                 if st.button("Редактировать"):
