@@ -612,9 +612,13 @@ def search_articles(
     if query.tags:
         required = set(query.tags)
         hits = [h for h in hits if required.issubset(set(h.tags))]
+    group_prompt = None
     if query.group_id:
         hits = [h for h in hits if h.group_id == query.group_id]
-    hits = rerank_with_llm(query.q, hits)
+        group = db.query(ArticleGroup).filter(ArticleGroup.id == query.group_id).first()
+        if group and group.prompt_template:
+            group_prompt = group.prompt_template
+    hits = rerank_with_llm(query.q, hits, prompt_template=group_prompt)
     return hits
 
 
