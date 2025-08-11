@@ -20,8 +20,9 @@ fake_qdrant.insert_vector = lambda *a, **kw: None
 fake_qdrant.delete_vector = lambda *a, **kw: None
 fake_qdrant.search_vector = lambda vector, db, team_id, limit=5: []
 
-def _rerank_with_llm(query, hits, prompt_template=None):
+def _rerank_with_llm(query, hits, prompt_template=None, model=None):
     captured["prompt_template"] = prompt_template
+    captured["model"] = model
     return hits
 
 fake_qdrant.rerank_with_llm = _rerank_with_llm

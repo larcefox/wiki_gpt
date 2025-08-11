@@ -124,6 +124,7 @@ def rerank_with_llm(
     query: str,
     hits: List[ArticleSearchHit],
     prompt_template: str | None = None,
+    model: str = "yandexgpt-lite",
 ) -> List[ArticleSearchHit]:
     """Re-rank search hits using YandexGPT if credentials are set."""
     if not (YANDEX_OAUTH_TOKEN and YANDEX_FOLDER_ID) or not hits:
@@ -153,7 +154,7 @@ def rerank_with_llm(
         )
 
     payload = {
-        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite/latest",
+        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/{model}/latest",
         "completionOptions": {"stream": False, "temperature": 0.0, "maxTokens": 200},
         "messages": [{"role": "user", "text": prompt}],
     }

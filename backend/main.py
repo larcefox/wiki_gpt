@@ -37,6 +37,7 @@ from schemas import (
     TeamInviteRequest,
     TeamUserAction,
     TeamSwitchRequest,
+    TeamModelUpdate,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,14 @@ Base.metadata.create_all(bind=engine)
 def ensure_columns():
     inspector = sa_inspect(engine)
     with engine.begin() as conn:
+        team_cols = [c["name"] for c in inspector.get_columns("teams")]
+        if "llm_model" not in team_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE teams ADD COLUMN llm_model TEXT DEFAULT 'yandexgpt-lite'"
+                )
+            )
+
         user_cols = [c["name"] for c in inspector.get_columns("users")]
         if "team_id" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN team_id UUID"))
@@ -198,6 +207,28 @@ def reset_user_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.password_hash = get_password_hash(req.new_password)
+    db.commit()
+    return {"status": "ok"}
+
+
+@admin_router.get("/teams", response_model=List[TeamOut])
+def admin_list_teams(
+    db: Session = Depends(get_db), current_user=Depends(check_admin_role)
+):
+    return db.query(Team).all()
+
+
+@admin_router.post("/teams/{team_id}/model")
+def admin_update_team_model(
+    team_id: UUID,
+    req: TeamModelUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(check_admin_role),
+):
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    team.llm_model = req.llm_model
     db.commit()
     return {"status": "ok"}
 
@@ -692,7 +723,15 @@ def search_articles(
         required = set(query.tags)
         hits = [h for h in hits if required.issubset(set(h.tags))]
     group_prompt = resolve_prompt(db, query.group_id)
-    hits = rerank_with_llm(query.q, hits, prompt_template=group_prompt)
+    team_model = (
+        db.query(Team.llm_model)
+        .filter(Team.id == current_user.team_id)
+        .scalar()
+        or "yandexgpt-lite"
+    )
+    hits = rerank_with_llm(
+        query.q, hits, prompt_template=group_prompt, model=team_model
+    )
     return hits
 
 

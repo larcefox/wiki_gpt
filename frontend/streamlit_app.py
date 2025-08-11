@@ -186,6 +186,14 @@ def admin_reset_password(user_id: str, new_password: str):
     )
 
 
+def admin_list_teams():
+    return api_get("/admin/teams")
+
+
+def admin_update_team_model(team_id: str, llm_model: str):
+    return api_post(f"/admin/teams/{team_id}/model", {"llm_model": llm_model})
+
+
 def list_my_teams():
     return api_get("/teams/")
 
@@ -326,6 +334,7 @@ def llm_recommendations(
     content: str,
     group_id: str | None = None,
     prompt_template: str | None = None,
+    model: str | None = None,
 ) -> str:
     if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
         return "LLM выключен: не заданы YANDEX_OAUTH_TOKEN / YANDEX_FOLDER_ID."
@@ -335,6 +344,16 @@ def llm_recommendations(
         "Authorization": f"Bearer {YANDEX_TOKEN}",
         "Content-Type": "application/json",
     }
+
+    if model is None:
+        team_id = st.session_state.get("user", {}).get("team_id")
+        model = "yandexgpt-lite"
+        if team_id:
+            try:
+                team = get_team(team_id)
+                model = team.get("llm_model", model)
+            except Exception:
+                pass
 
     articles_info = ""
     if group_id:
@@ -369,7 +388,7 @@ def llm_recommendations(
         )
 
     payload = {
-        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite/latest",
+        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/{model}/latest",
         "completionOptions": {"stream": False, "temperature": 0.2, "maxTokens": 400},
         "messages": [
             {"role": "system", "text": "Ты помогаешь улучшать статьи в базе знаний."},
@@ -1101,6 +1120,35 @@ elif page == "Панель администратора":
                     st.error(str(e))
     else:
         st.info("Нет пользователей")
+
+    st.subheader("Модели команд")
+    try:
+        teams = admin_list_teams()
+    except Exception as e:
+        st.error(str(e))
+        teams = []
+    if teams:
+        for t in teams:
+            c1, c2, c3 = st.columns([3, 3, 2])
+            c1.write(t["name"])
+            models = ["yandexgpt-lite", "yandexgpt"]
+            idx = models.index(t["llm_model"]) if t["llm_model"] in models else 0
+            model_sel = c2.selectbox(
+                "Модель",
+                models,
+                index=idx,
+                key=f"team_model_{t['id']}",
+                label_visibility="collapsed",
+            )
+            if c3.button("Сохранить", key=f"team_save_{t['id']}"):
+                try:
+                    admin_update_team_model(t["id"], model_sel)
+                    st.success("Обновлено")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+    else:
+        st.info("Нет команд")
 
 # --- Диагностика ---
 elif page == "Диагностика":

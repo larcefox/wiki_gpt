@@ -104,3 +104,22 @@ def test_admin_panel():
         "/auth/login", json={"email": "user@example.com", "password": "NewPass123"}
     )
     assert r.status_code == 200
+
+    # admin can list teams
+    r = client.get("/admin/teams", headers=auth_headers(admin_token))
+    assert r.status_code == 200
+    teams = r.json()
+    assert any(t["id"] == admin["team_id"] for t in teams)
+
+    # update team model
+    r = client.post(
+        f"/admin/teams/{admin['team_id']}/model",
+        json={"llm_model": "yandexgpt"},
+        headers=auth_headers(admin_token),
+    )
+    assert r.status_code == 200
+
+    # verify model updated
+    r = client.get("/admin/teams", headers=auth_headers(admin_token))
+    team = next(t for t in r.json() if t["id"] == admin["team_id"])
+    assert team["llm_model"] == "yandexgpt"
