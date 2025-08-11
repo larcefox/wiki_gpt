@@ -166,6 +166,30 @@ def admin_reset_password(user_id: str, new_password: str):
     )
 
 
+def list_my_teams():
+    return api_get("/teams/")
+
+
+def create_team(name: str):
+    return api_post("/teams/", {"name": name})
+
+
+def invite_to_team(team_id: str, email: str):
+    return api_post(f"/teams/{team_id}/invite", {"email": email})
+
+
+def remove_from_team(team_id: str, user_id: str):
+    return api_post(f"/teams/{team_id}/remove", {"user_id": user_id})
+
+
+def switch_team(team_id: str):
+    return api_post("/teams/switch", {"team_id": team_id})
+
+
+def get_team(team_id: str):
+    return api_get(f"/teams/{team_id}")
+
+
 def fetch_group_options(include_none: str | None = None):
     try:
         groups = api_get("/article-groups/flat")
@@ -437,7 +461,7 @@ options: list[str] = []
 if "author" in roles or "admin" in roles:
     options += ["Создать статью", "Редактировать статью"]
 if any(r in roles for r in ["reader", "author", "admin"]):
-    options += ["Поиск", "Статья по ID"]
+    options += ["Поиск", "Статья по ID", "Команды"]
 if "admin" in roles:
     options += ["Панель администратора", "Диагностика"]
 page = st.sidebar.radio("Навигация", options, key="page")
@@ -741,6 +765,69 @@ elif page == "Статья по ID":
                 st.table(history)
             else:
                 st.info("История пуста")
+
+# --- Команды ---
+elif page == "Команды":
+    st.header("Мои команды")
+    try:
+        teams = list_my_teams()
+    except Exception as e:
+        st.error(str(e))
+        teams = []
+    current_team = st.session_state["user"].get("team_id")
+    for t in teams:
+        col1, col2 = st.columns([4, 1])
+        label = f"**{t['name']}**"
+        if t["id"] == current_team:
+            label += " (активная)"
+        col1.write(label)
+        if t["id"] != current_team and col2.button("Перейти", key=f"switch_{t['id']}"):
+            try:
+                switch_team(t["id"])
+                st.session_state["user"] = api_get("/auth/me")
+                st.success("Команда переключена")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+        if t["id"] == current_team:
+            try:
+                detail = get_team(t["id"])
+            except Exception as e:
+                st.error(str(e))
+                detail = {"users": []}
+            st.subheader("Участники")
+            for u in detail.get("users", []):
+                c1, c2 = st.columns([4, 1])
+                c1.write(u["email"])
+                if u["id"] != st.session_state["user"]["id"] and c2.button(
+                    "Удалить", key=f"rm_{u['id']}"
+                ):
+                    try:
+                        remove_from_team(t["id"], u["id"])
+                        st.success("Удален")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+            invite_email = st.text_input("Пригласить по email", key="invite_email")
+            if st.button("Отправить приглашение") and invite_email.strip():
+                try:
+                    invite_to_team(t["id"], invite_email.strip())
+                    st.success("Приглашение отправлено")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+    st.markdown("---")
+    with st.form("create_team_form"):
+        name = st.text_input("Название новой команды")
+        submitted = st.form_submit_button("Создать")
+    if submitted and name.strip():
+        try:
+            create_team(name.strip())
+            st.session_state["user"] = api_get("/auth/me")
+            st.success("Команда создана")
+            st.rerun()
+        except Exception as e:
+            st.error(str(e))
 
 # --- Панель администратора ---
 elif page == "Панель администратора":

@@ -15,7 +15,7 @@ class Team(Base):
     name = Column(String, nullable=False, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    users = relationship("User", back_populates="team")
+    users = relationship("User", secondary="user_teams", back_populates="teams")
     articles = relationship("Article", back_populates="team")
 
 
@@ -27,9 +27,12 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"))
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), nullable=True)
 
-    team = relationship("Team", back_populates="users")
+    # active team relationship
+    team = relationship("Team", foreign_keys=[team_id])
+    # all teams membership
+    teams = relationship("Team", secondary="user_teams", back_populates="users")
     roles = relationship("Role", secondary="user_roles", back_populates="users")
 
 
@@ -47,6 +50,13 @@ class UserRole(Base):
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
     role_code = Column(String, ForeignKey("roles.code"), primary_key=True)
+
+
+class UserTeam(Base):
+    __tablename__ = "user_teams"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), primary_key=True)
 
 
 class ArticleGroup(Base):
