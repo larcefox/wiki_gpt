@@ -103,7 +103,11 @@ def search_vector(vector: List[float], db: Session, team_id, limit: int = 5) -> 
     ]
 
 
-def rerank_with_llm(query: str, hits: List[ArticleSearchHit]) -> List[ArticleSearchHit]:
+def rerank_with_llm(
+    query: str,
+    hits: List[ArticleSearchHit],
+    prompt_template: str | None = None,
+) -> List[ArticleSearchHit]:
     """Re-rank search hits using YandexGPT if credentials are set."""
     if not (YANDEX_OAUTH_TOKEN and YANDEX_FOLDER_ID) or not hits:
         return hits
@@ -117,11 +121,19 @@ def rerank_with_llm(query: str, hits: List[ArticleSearchHit]) -> List[ArticleSea
     parts = []
     for idx, hit in enumerate(hits, 1):
         parts.append(f"{idx}. id={hit.id} title={hit.title}\n{hit.content}")
-    prompt = (
-        "Ты – поисковый ранжировщик. По запросу пользователя упорядочи статьи по релевантности."
-        " Верни JSON-массив ID в порядке убывания релевантности.\n"
-        f"Запрос: {query}\n\n" + "\n\n".join(parts)
-    )
+    articles_info = "\n\n".join(parts)
+
+    if prompt_template:
+        try:
+            prompt = prompt_template.format(query=query, articles=articles_info)
+        except Exception:
+            prompt = prompt_template + f"\nЗапрос: {query}\n\n{articles_info}"
+    else:
+        prompt = (
+            "Ты – поисковый ранжировщик. По запросу пользователя упорядочи статьи по релевантности."
+            " Верни JSON-массив ID в порядке убывания релевантности.\n"
+            f"Запрос: {query}\n\n{articles_info}"
+        )
 
     payload = {
         "modelUri": f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite/latest",
