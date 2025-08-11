@@ -174,14 +174,27 @@ def rerank_with_llm(
     return hits
 
 def embed_text(text: str) -> list[float]:
+    if not (YANDEX_OAUTH_TOKEN and YANDEX_FOLDER_ID):
+        raise RuntimeError("YANDEX_OAUTH_TOKEN / YANDEX_FOLDER_ID are not set")
     headers = {
         "Authorization": f"Api-Key {YANDEX_OAUTH_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     payload = {
         "modelUri": f"emb://{YANDEX_FOLDER_ID}/text-search-query/latest",
-        "text": text
+        "text": text,
     }
-    response = requests.post(YANDEX_API_URL, headers=headers, json=payload)
-    response.raise_for_status()
-    return response.json()["embedding"]
+    try:
+        response = requests.post(
+            YANDEX_API_URL, headers=headers, json=payload
+        )
+        response.raise_for_status()
+        return response.json()["embedding"]
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 401:
+            raise RuntimeError(
+                "Yandex embedding API key is missing or invalid"
+            ) from e
+        raise
+    except requests.RequestException as e:
+        raise RuntimeError("Failed to fetch embedding from Yandex API") from e

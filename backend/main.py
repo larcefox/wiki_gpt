@@ -1,6 +1,7 @@
 import os
 import inspect
-from fastapi import Body, Depends, FastAPI, HTTPException, APIRouter
+import logging
+from fastapi import Body, Depends, FastAPI, HTTPException, APIRouter, Response
 from uuid import UUID
 from typing import List, Optional
 from pydantic import BaseModel
@@ -37,6 +38,8 @@ from schemas import (
     TeamUserAction,
     TeamSwitchRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SearchAnswerRequest(ArticleSearchQuery):
@@ -579,6 +582,7 @@ def get_article(
 @app.get("/articles/{article_id}/related", response_model=List[ArticleSearchHit])
 def related_articles(
     article_id: UUID,
+    response: Response,
     limit: int = 5,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(["reader"])),
@@ -594,7 +598,12 @@ def related_articles(
     )
     if db_article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-    embedding = embed_text(f"{db_article.title}\n{db_article.content}")
+    try:
+        embedding = embed_text(f"{db_article.title}\n{db_article.content}")
+    except RuntimeError as e:
+        logger.warning("Related articles embedding failed: %s", e)
+        response.headers["X-Embeddings-Warning"] = str(e)
+        return []
     hits = _search_with_optional_group(
         embedding,
         db=db,
