@@ -347,6 +347,13 @@ def llm_recommendations(
             )
         except Exception:
             prompt = prompt_template
+
+        if "{title}" not in prompt_template:
+            prompt = f"Заголовок: {title}\n\n" + prompt
+        if "{content}" not in prompt_template:
+            prompt += f"\n\nТекст статьи:\n{content}"
+        if "{group_articles}" not in prompt_template and articles_info:
+            prompt += articles_info
     else:
         prompt = (
             "Ты – редактор и техписатель. Дай практичные рекомендации по улучшению статьи: "
