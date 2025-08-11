@@ -3,8 +3,8 @@ import os
 import requests
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, PointStruct, VectorParams
-from typing import List, Dict
+from qdrant_client.http.models import Distance, PointStruct, VectorParams, Filter, FieldCondition, MatchValue
+from typing import List, Dict, Optional
 from uuid import UUID as UUID_cls
 from sqlalchemy.orm import Session
 from models import Article
@@ -46,10 +46,12 @@ def ensure_collection():
         )
 
 
-def insert_vector(article_id: str, embedding: list[float]):
+def insert_vector(article_id: str, embedding: list[float], group_id: Optional[str] = None):
+    """Insert or update a vector for an article with optional group metadata."""
+    payload = {"group_id": str(group_id)} if group_id else {}
     client.upsert(
         collection_name=COLLECTION_NAME,
-        points=[PointStruct(id=article_id, vector=embedding, payload={})]
+        points=[PointStruct(id=article_id, vector=embedding, payload=payload)]
     )
 
 
@@ -70,12 +72,27 @@ def delete_vector(article_id: str):
     client.delete(collection_name=COLLECTION_NAME, points_selector=[article_id])
 
 
-def search_vector(vector: List[float], db: Session, team_id, limit: int = 5) -> List[ArticleSearchHit]:
+def search_vector(
+    vector: List[float],
+    db: Session,
+    team_id,
+    group_id: Optional[str] = None,
+    limit: int = 5,
+) -> List[ArticleSearchHit]:
+    """Search for similar vectors with optional filtering by group."""
+
+    query_filter = None
+    if group_id:
+        query_filter = Filter(
+            must=[FieldCondition(key="group_id", match=MatchValue(value=str(group_id)))]
+        )
+
     hits = client.search(
         collection_name=COLLECTION_NAME,
         query_vector=vector,
         limit=limit,
         with_payload=True,
+        query_filter=query_filter,
     )
 
     ids = [UUID_cls(str(hit.id)) for hit in hits]

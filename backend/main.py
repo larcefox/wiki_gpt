@@ -1,9 +1,11 @@
+import os
+import inspect
 from fastapi import Body, Depends, FastAPI, HTTPException, APIRouter
 from uuid import UUID
 from typing import List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect as sa_inspect, text
 from db import get_db, SessionLocal, engine, wait_for_db
 from models import Article, ArticleVersion, ArticleGroup, Base, User, Role, Team, UserTeam
 from auth import router as auth_router, require_roles, init_roles, check_admin_role, get_password_hash
@@ -36,12 +38,22 @@ from schemas import (
     TeamSwitchRequest,
 )
 
+
+class SearchAnswerRequest(ArticleSearchQuery):
+    top_k: int = 5
+
+
+class SearchAnswerResponse(BaseModel):
+    answer: str
+    sources: List[ArticleSearchHit]
+    prompt_used: str
+
 wait_for_db()
 Base.metadata.create_all(bind=engine)
 
 
 def ensure_columns():
-    inspector = inspect(engine)
+    inspector = sa_inspect(engine)
     with engine.begin() as conn:
         user_cols = [c["name"] for c in inspector.get_columns("users")]
         if "team_id" not in user_cols:
@@ -79,6 +91,29 @@ def ensure_columns():
 ensure_columns()
 ensure_collection()
 init_roles()
+
+
+DEFAULT_GROUP_PROMPT = os.getenv("DEFAULT_GROUP_PROMPT", "You are a helpful assistant")
+
+
+def resolve_prompt(db: Session, group_id: Optional[UUID]) -> str:
+    if group_id:
+        group = db.query(ArticleGroup).filter(ArticleGroup.id == group_id).first()
+        if group and group.prompt_template:
+            return group.prompt_template
+    return DEFAULT_GROUP_PROMPT
+
+
+def _search_with_optional_group(vector, db, team_id, group_id=None, limit=5):
+    params = inspect.signature(search_vector).parameters
+    if "group_id" in params:
+        return search_vector(
+            vector, db=db, team_id=team_id, group_id=group_id, limit=limit
+        )
+    hits = search_vector(vector, db=db, team_id=team_id, limit=limit)
+    if group_id:
+        hits = [h for h in hits if h.group_id == group_id]
+    return hits
 
 
 def ensure_user_team_memberships():
@@ -463,7 +498,7 @@ def create_article(
     db.refresh(db_article)
 
     embedding = embed_text(f"{article.title}\n{article.content}")
-    insert_vector(str(db_article.id), embedding)
+    insert_vector(str(db_article.id), embedding, group_id=str(db_article.group_id) if db_article.group_id else None)
 
     save_version(db_article, db)
 
@@ -502,7 +537,7 @@ def update_article(
     db.refresh(db_article)
 
     embedding = embed_text(f"{article.title}\n{article.content}")
-    insert_vector(str(db_article.id), embedding)
+    insert_vector(str(db_article.id), embedding, group_id=str(db_article.group_id) if db_article.group_id else None)
 
     save_version(db_article, db)
 
@@ -608,18 +643,41 @@ def search_articles(
     current_user=Depends(require_roles(["reader"])),
 ):
     query_embedding = embed_text(query.q)
-    hits = search_vector(query_embedding, db=db, team_id=current_user.team_id)
+    hits = _search_with_optional_group(
+        query_embedding,
+        db=db,
+        team_id=current_user.team_id,
+        group_id=query.group_id,
+    )
     if query.tags:
         required = set(query.tags)
         hits = [h for h in hits if required.issubset(set(h.tags))]
-    group_prompt = None
-    if query.group_id:
-        hits = [h for h in hits if h.group_id == query.group_id]
-        group = db.query(ArticleGroup).filter(ArticleGroup.id == query.group_id).first()
-        if group and group.prompt_template:
-            group_prompt = group.prompt_template
+    group_prompt = resolve_prompt(db, query.group_id)
     hits = rerank_with_llm(query.q, hits, prompt_template=group_prompt)
     return hits
+
+
+@app.post("/articles/search/answer", response_model=SearchAnswerResponse)
+def search_answer(
+    req: SearchAnswerRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
+    query_embedding = embed_text(req.q)
+    hits = _search_with_optional_group(
+        query_embedding,
+        db=db,
+        team_id=current_user.team_id,
+        group_id=req.group_id,
+        limit=req.top_k,
+    )
+    if req.tags:
+        required = set(req.tags)
+        hits = [h for h in hits if required.issubset(set(h.tags))]
+    prompt = resolve_prompt(db, req.group_id)
+    context = "\n\n".join(h.content for h in hits)
+    answer = f"{req.q}\n{context}" if context else ""
+    return SearchAnswerResponse(answer=answer, sources=hits, prompt_used=prompt)
 
 
 def save_version(article: Article, db: Session):
