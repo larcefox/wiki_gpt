@@ -50,7 +50,15 @@ def _state_str(key: str) -> str:
 def render_article_editor(
     state_key: str, editor_key: str, placeholder: str = "Напишите статью."
 ):
-    """Unified article editor bound to session_state."""
+    """Unified article editor bound to session_state.
+
+    ``st_quill`` may return ``None`` on initial render or when the user
+    hasn't modified the editor in the current run. When submitting a
+    form immediately after typing, this could lead to the latest content
+    not being captured. To avoid losing text, fall back to the widget's
+    own state when ``content`` is ``None`` and always persist it under
+    ``state_key``.
+    """
 
     content = st_quill(
         value=_state_str(state_key),
@@ -58,8 +66,16 @@ def render_article_editor(
         placeholder=placeholder,
         key=editor_key,
     )
+
+    if content is None:
+        # When the component doesn't report an update (e.g. submit right
+        # after typing), retrieve the latest value directly from
+        # session_state.
+        content = st.session_state.get(editor_key)
+
     if content is not None:
         st.session_state[state_key] = content
+
     return _state_str(state_key)
 
 
@@ -602,7 +618,6 @@ if page == "Создать статью":
         if st.session_state.pop("create_submit", False):
             title_val = _state_str("create_title").strip()
             content_val = _state_str("create_content").strip()
-            st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
             if not title_val or not content_val:
                 st.error("Заполните заголовок и текст.")
             else:
@@ -731,7 +746,6 @@ elif page == "Редактировать статью":
     if st.session_state.pop("edit_submit", False):
         title_val = title.strip()
         content_val = _state_str("edit_content").strip()
-        st.write(f"[DEBUG] title='{title_val}' content='{content_val}'")
         if not article_id.strip():
             st.error("Укажи ID статьи.")
         elif not title_val or not content_val:
