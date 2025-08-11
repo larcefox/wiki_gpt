@@ -457,6 +457,10 @@ if st.sidebar.button("Выйти"):
 
 render_sidebar_tree()
 
+# Allow other callbacks to request a page switch before the navigation widget
+if st.session_state.get("pending_page"):
+    st.session_state.page = st.session_state.pop("pending_page")
+
 options: list[str] = []
 if "author" in roles or "admin" in roles:
     options += ["Создать статью", "Редактировать статью"]
@@ -749,7 +753,7 @@ elif page == "Статья по ID":
                 if st.button("Редактировать"):
                     st.session_state.edit_article_id = article["id"]
                     st.session_state.pop("edit_loaded_id", None)
-                    st.session_state.page = "Редактировать статью"
+                    st.session_state.pending_page = "Редактировать статью"
                     st.rerun()
             if st.button("Удалить статью"):
                 try:
