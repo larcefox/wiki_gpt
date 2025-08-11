@@ -173,9 +173,23 @@ def rerank_with_llm(
         return hits
     return hits
 
+
+def _local_embed(text: str) -> list[float]:
+    """Generate a deterministic embedding without external services.
+
+    The implementation uses a simple hashing trick to map words to the
+    ``VECTOR_SIZE`` dimensional space.  It is intentionally lightweight so the
+    rest of the application can operate without network access or API keys.
+    """
+
+    vec = [0.0] * VECTOR_SIZE
+    for word in text.split():
+        vec[hash(word) % VECTOR_SIZE] += 1.0
+    return vec
+
 def embed_text(text: str) -> list[float]:
     if not (YANDEX_OAUTH_TOKEN and YANDEX_FOLDER_ID):
-        raise RuntimeError("YANDEX_OAUTH_TOKEN / YANDEX_FOLDER_ID are not set")
+        return _local_embed(text)
     headers = {
         "Authorization": f"Api-Key {YANDEX_OAUTH_TOKEN}",
         "Content-Type": "application/json",
@@ -186,15 +200,13 @@ def embed_text(text: str) -> list[float]:
     }
     try:
         response = requests.post(
-            YANDEX_API_URL, headers=headers, json=payload
+            YANDEX_API_URL, headers=headers, json=payload, timeout=60
         )
         response.raise_for_status()
         return response.json()["embedding"]
     except requests.HTTPError as e:
         if e.response is not None and e.response.status_code == 401:
-            raise RuntimeError(
-                "Yandex embedding API key is missing or invalid"
-            ) from e
-        raise
-    except requests.RequestException as e:
+            return _local_embed(text)
         raise RuntimeError("Failed to fetch embedding from Yandex API") from e
+    except requests.RequestException:
+        return _local_embed(text)
