@@ -168,6 +168,10 @@ def get_history(article_id: str):
     return api_get(f"/articles/{article_id}/history")
 
 
+def get_related_articles(article_id: str, limit: int = 5):
+    return api_get(f"/articles/{article_id}/related?limit={limit}")
+
+
 def admin_list_users():
     return api_get("/admin/users")
 
@@ -863,6 +867,14 @@ elif page == "Статья по ID":
             st.subheader(article["title"])
             st.markdown(article["content"], unsafe_allow_html=True)
             st.caption(f"Теги: {', '.join(article.get('tags', []))}")
+            related = get_related_articles(article["id"])
+            if related:
+                st.subheader("Похожие статьи")
+                for hit in related:
+                    st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
+                    st.caption(f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}")
+                    st.markdown(hit["content"], unsafe_allow_html=True)
+                    st.markdown("---")
             if "author" in roles or "admin" in roles:
                 if st.button("Редактировать"):
                     st.session_state.edit_article_id = article["id"]

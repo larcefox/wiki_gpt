@@ -576,6 +576,36 @@ def get_article(
     )
 
 
+@app.get("/articles/{article_id}/related", response_model=List[ArticleSearchHit])
+def related_articles(
+    article_id: UUID,
+    limit: int = 5,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
+    db_article = (
+        db.query(Article)
+        .filter(
+            Article.id == article_id,
+            Article.is_deleted == False,
+            Article.team_id == current_user.team_id,
+        )
+        .first()
+    )
+    if db_article is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    embedding = embed_text(f"{db_article.title}\n{db_article.content}")
+    hits = _search_with_optional_group(
+        embedding,
+        db=db,
+        team_id=current_user.team_id,
+        group_id=db_article.group_id,
+        limit=limit + 1,
+    )
+    hits = [h for h in hits if h.id != str(article_id)]
+    return hits[:limit]
+
+
 @app.delete("/articles/{article_id}")
 def delete_article(
     article_id: UUID,
