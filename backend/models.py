@@ -14,6 +14,7 @@ class Team(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    llm_model = Column(String, nullable=False, default="yandexgpt-lite")
 
     users = relationship("User", secondary="user_teams", back_populates="teams")
     articles = relationship("Article", back_populates="team")

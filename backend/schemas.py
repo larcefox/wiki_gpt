@@ -140,6 +140,7 @@ class TeamCreate(BaseModel):
 class TeamOut(BaseModel):
     id: UUID
     name: str
+    llm_model: str
 
     class Config:
         orm_mode = True
@@ -155,6 +156,10 @@ class TeamUserOut(BaseModel):
 
 class TeamWithUsers(TeamOut):
     users: List[TeamUserOut] = []
+
+
+class TeamModelUpdate(BaseModel):
+    llm_model: str
 
 
 class TeamInviteRequest(BaseModel):
