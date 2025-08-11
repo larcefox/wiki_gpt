@@ -190,11 +190,16 @@ def get_team(team_id: str):
     return api_get(f"/teams/{team_id}")
 
 
-def fetch_group_options(include_none: str | None = None):
+def fetch_groups() -> list[dict]:
     try:
-        groups = api_get("/article-groups/flat")
+        return api_get("/article-groups/flat")
     except Exception:
-        groups = []
+        return []
+
+
+def build_group_options(
+    groups: list[dict], include_none: str | None = None
+) -> list[tuple[str | None, str]]:
     children: dict[str | None, list[dict]] = {}
     for g in groups:
         children.setdefault(g.get("parent_id"), []).append(g)
@@ -209,6 +214,11 @@ def fetch_group_options(include_none: str | None = None):
     if include_none is not None:
         result = [(None, include_none)] + result
     return result
+
+
+def fetch_group_options(include_none: str | None = None):
+    groups = fetch_groups()
+    return build_group_options(groups, include_none)
 
 
 def render_sidebar_tree() -> None:
@@ -256,10 +266,33 @@ def render_sidebar_tree() -> None:
                 _article_button(art)
 
 
+def get_group_articles(group_id: str) -> list[dict]:
+    try:
+        tree = api_get("/article-groups/tree")
+    except Exception:
+        return []
+
+    def find(nodes: list[dict]) -> dict | None:
+        for n in nodes:
+            if n.get("id") == group_id:
+                return n
+            res = find(n.get("children", []))
+            if res:
+                return res
+        return None
+
+    node = find(tree)
+    return node.get("articles", []) if node else []
+
+
 def suggest_related(
-    title: str, content: str, exclude_id: str | None = None, top_k: int = 5
+    title: str,
+    content: str,
+    exclude_id: str | None = None,
+    top_k: int = 5,
+    group_id: str | None = None,
 ):
-    results = search_articles(f"{title}\n{content}")
+    results = search_articles(f"{title}\n{content}", group_id=group_id)
     unique = []
     for hit in results:
         if exclude_id and hit["id"] == exclude_id:
@@ -268,7 +301,12 @@ def suggest_related(
     return unique[:top_k]
 
 
-def llm_recommendations(title: str, content: str) -> str:
+def llm_recommendations(
+    title: str,
+    content: str,
+    group_id: str | None = None,
+    prompt_template: str | None = None,
+) -> str:
     if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
         return "LLM выключен: не заданы YANDEX_OAUTH_TOKEN / YANDEX_FOLDER_ID."
 
@@ -278,14 +316,30 @@ def llm_recommendations(title: str, content: str) -> str:
         "Content-Type": "application/json",
     }
 
-    prompt = (
-        "Ты – редактор и техписатель. Дай практичные рекомендации по улучшению статьи: "
-        "структура, ясность, недостающие разделы, теги. Пиши кратко и по пунктам.\n\n"
-        f"Заголовок: {title}\n\n"
-        f"Текст статьи:\n{content}\n\n"
-        "Ответ формируй в формате маркдаун-списка, каждый пункт начинай с одной из пометок: "
-        "[структура], [пробелы в фактах], [предложенные теги]."
-    )
+    articles_info = ""
+    if group_id:
+        titles = [a.get("title", "") for a in get_group_articles(group_id)][:5]
+        if titles:
+            articles_info = "\n\nДругие статьи в группе:\n" + "\n".join(
+                f"- {t}" for t in titles
+            )
+
+    if prompt_template:
+        try:
+            prompt = prompt_template.format(
+                title=title, content=content, group_articles=articles_info
+            )
+        except Exception:
+            prompt = prompt_template
+    else:
+        prompt = (
+            "Ты – редактор и техписатель. Дай практичные рекомендации по улучшению статьи: "
+            "структура, ясность, недостающие разделы, теги. Пиши кратко и по пунктам.\n\n"
+            f"Заголовок: {title}\n\n"
+            f"Текст статьи:\n{content}{articles_info}\n\n"
+            "Ответ формируй в формате маркдаун-списка, каждый пункт начинай с одной из пометок: "
+            "[структура], [пробелы в фактах], [предложенные теги]."
+        )
 
     payload = {
         "modelUri": f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite/latest",
@@ -467,7 +521,7 @@ if "author" in roles or "admin" in roles:
 if any(r in roles for r in ["reader", "author", "admin"]):
     options += ["Поиск", "Статья по ID", "Команды"]
 if "admin" in roles:
-    options += ["Панель администратора", "Диагностика"]
+    options += ["Группы статей", "Панель администратора", "Диагностика"]
 page = st.sidebar.radio("Навигация", options, key="page")
 
 st.sidebar.markdown("---")
@@ -477,6 +531,11 @@ st.sidebar.caption(f"Backend: {API_BASE}")
 if page == "Создать статью":
     st.header("Создать статью")
     main_col, rec_col = st.columns([3, 2])
+
+    groups_data = fetch_groups()
+    group_prompt_map = {g["id"]: g.get("prompt_template") for g in groups_data}
+    group_opts = build_group_options(groups_data, "Без группы")
+    group_opts.append(("__new__", "Создать новую группу"))
 
     if "create_title" not in st.session_state:
         st.session_state.create_title = ""
@@ -491,7 +550,6 @@ if page == "Создать статью":
 
     def schedule_llm() -> None:
         if not (YANDEX_TOKEN and YANDEX_FOLDER_ID):
-
             logger.debug("LLM disabled, skipping schedule")
             return
         if st.session_state.llm_timer:
@@ -504,7 +562,15 @@ if page == "Создать статью":
                 st.session_state.llm_tips = ""
             else:
                 logger.info("Auto-updating LLM recommendations")
-                st.session_state.llm_tips = llm_recommendations(title, content)
+                sel = st.session_state.get("create_group")
+                g_id = None
+                prompt = None
+                if isinstance(sel, tuple) and sel[0] not in (None, "__new__"):
+                    g_id = sel[0]
+                    prompt = group_prompt_map.get(g_id)
+                st.session_state.llm_tips = llm_recommendations(
+                    title, content, g_id, prompt
+                )
             st.session_state.llm_timer = None
             st.rerun()
 
@@ -515,8 +581,6 @@ if page == "Создать статью":
     with main_col:
         st.text_input("Заголовок", key="create_title", on_change=schedule_llm)
         st.text_input("Теги (через запятую)", key="create_tags")
-        group_opts = fetch_group_options("Без группы")
-        group_opts.append(("__new__", "Создать новую группу"))
         st.selectbox(
             "Группа",
             group_opts,
@@ -564,7 +628,11 @@ if page == "Создать статью":
                     st.success(f"Создано! ID: {res['id']}")
                     with st.expander("Похожие статьи сразу после сохранения"):
                         related = suggest_related(
-                            title_val, content_val, exclude_id=res["id"], top_k=5
+                            title_val,
+                            content_val,
+                            exclude_id=res["id"],
+                            top_k=5,
+                            group_id=group_id,
                         )
                         for hit in related:
                             st.write(
@@ -587,8 +655,14 @@ if page == "Создать статью":
                 else:
                     with st.spinner("Генерирую рекомендации..."):
                         logger.info("Manual LLM request")
+                        sel = st.session_state.get("create_group")
+                        g_id = None
+                        prompt = None
+                        if isinstance(sel, tuple) and sel[0] not in (None, "__new__"):
+                            g_id = sel[0]
+                            prompt = group_prompt_map.get(g_id)
                         st.session_state.llm_tips = llm_recommendations(
-                            title_val, content_val
+                            title_val, content_val, g_id, prompt
                         )
                     st.rerun()
 
@@ -605,8 +679,13 @@ if page == "Создать статью":
 
 # --- Редактировать ---
 elif page == "Редактировать статью":
+    groups_data = fetch_groups()
+    group_prompt_map = {g["id"]: g.get("prompt_template") for g in groups_data}
+    group_opts = build_group_options(groups_data, "Без группы")
+
     st.header("Редактировать статью")
     st.caption("Укажи ID статьи (можно взять из результата создания/поиска).")
+
     def _load_edit_article() -> None:
         art_id = st.session_state.get("edit_article_id", "").strip()
         if not art_id or st.session_state.get("edit_loaded_id") == art_id:
@@ -616,18 +695,16 @@ elif page == "Редактировать статью":
             st.session_state["edit_title"] = art["title"]
             st.session_state["edit_tags"] = ", ".join(art.get("tags", []))
             st.session_state["edit_content"] = art["content"]
-            groups = fetch_group_options("Без группы")
-            for opt in groups:
+            for opt in group_opts:
                 if opt[0] == art.get("group_id"):
                     st.session_state["edit_group"] = opt
                     break
             else:
-                st.session_state["edit_group"] = groups[0]
+                st.session_state["edit_group"] = group_opts[0]
             st.session_state["edit_loaded_id"] = art_id
         except Exception as e:
             st.error(str(e))
 
-    group_opts = fetch_group_options("Без группы")
     article_id = st.text_input(
         "Article ID", key="edit_article_id", on_change=_load_edit_article
     )
@@ -680,7 +757,15 @@ elif page == "Редактировать статью":
             else:
                 with st.spinner("Генерирую рекомендации..."):
                     logger.info("Manual LLM request on edit page")
-                    tips = llm_recommendations(title.strip(), content_val)
+                    sel = st.session_state.get("edit_group")
+                    g_id = None
+                    prompt = None
+                    if isinstance(sel, tuple) and sel[0]:
+                        g_id = sel[0]
+                        prompt = group_prompt_map.get(g_id)
+                    tips = llm_recommendations(
+                        title.strip(), content_val, g_id, prompt
+                    )
                 st.markdown("### Рекомендации")
                 st.markdown(tips)
 
@@ -690,8 +775,16 @@ elif page == "Редактировать статью":
         if not title.strip() and not content_val:
             st.warning("Сначала заполни заголовок/текст — по ним ищем похожие.")
         else:
+            sel = st.session_state.get("edit_group")
+            g_id = None
+            if isinstance(sel, tuple):
+                g_id = sel[0]
             related = suggest_related(
-                title, content_val, exclude_id=article_id.strip(), top_k=10
+                title,
+                content_val,
+                exclude_id=article_id.strip(),
+                top_k=10,
+                group_id=g_id,
             )
             st.subheader("Похожие статьи")
             for hit in related:
@@ -832,6 +925,104 @@ elif page == "Команды":
             st.rerun()
         except Exception as e:
             st.error(str(e))
+
+# --- Группы статей ---
+elif page == "Группы статей":
+    st.header("Группы статей")
+    groups = fetch_groups()
+    parent_opts = build_group_options(groups, "Нет")
+
+    with st.expander("Создать группу"):
+        new_name = st.text_input("Название", key="adm_new_group_name")
+        new_desc = st.text_area("Описание", key="adm_new_group_desc")
+        parent_sel = st.selectbox(
+            "Родитель",
+            parent_opts,
+            format_func=lambda x: x[1],
+            key="adm_new_group_parent",
+        )
+        new_order = st.number_input("Порядок", value=0, key="adm_new_group_order")
+        new_prompt = st.text_area("Prompt template", key="adm_new_group_prompt")
+        if st.button("Создать", key="adm_new_group_btn"):
+            payload = {
+                "name": new_name,
+                "description": new_desc,
+                "parent_id": parent_sel[0] if isinstance(parent_sel, tuple) else None,
+                "prompt_template": new_prompt,
+                "order": int(new_order),
+            }
+            try:
+                api_post("/article-groups/", payload)
+                st.success("Группа создана")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+
+    st.markdown("### Список групп")
+    for g in groups:
+        with st.expander(g["name"], expanded=False):
+            name = st.text_input(
+                "Название", value=g["name"], key=f"grp_name_{g['id']}"
+            )
+            desc = st.text_area(
+                "Описание", value=g.get("description") or "", key=f"grp_desc_{g['id']}"
+            )
+            parent_index = next(
+                (i for i, opt in enumerate(parent_opts) if opt[0] == g.get("parent_id")),
+                0,
+            )
+            parent_sel = st.selectbox(
+                "Родитель",
+                parent_opts,
+                format_func=lambda x: x[1],
+                index=parent_index,
+                key=f"grp_parent_{g['id']}",
+            )
+            order = st.number_input(
+                "Порядок", value=g.get("order") or 0, key=f"grp_order_{g['id']}"
+            )
+            prompt = st.text_area(
+                "Prompt template",
+                value=g.get("prompt_template") or "",
+                key=f"grp_prompt_{g['id']}",
+            )
+            if st.button("Сохранить", key=f"grp_save_{g['id']}"):
+                payload = {
+                    "name": name,
+                    "description": desc,
+                    "parent_id": parent_sel[0] if isinstance(parent_sel, tuple) else None,
+                    "prompt_template": prompt,
+                    "order": int(order),
+                }
+                try:
+                    api_put(f"/article-groups/{g['id']}", payload)
+                    st.success("Сохранено")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+            if st.button("Удалить", key=f"grp_del_{g['id']}"):
+                try:
+                    api_delete(f"/article-groups/{g['id']}")
+                    st.warning("Удалено")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+
+            st.markdown("#### Тестовый промт")
+            test_title = st.text_input(
+                "Заголовок", key=f"grp_test_title_{g['id']}"
+            )
+            test_content = st.text_area(
+                "Текст", key=f"grp_test_content_{g['id']}"
+            )
+            if st.button("Проверить", key=f"grp_test_btn_{g['id']}"):
+                with st.spinner("LLM..."):
+                    st.session_state[f"grp_test_res_{g['id']}"] = llm_recommendations(
+                        test_title, test_content, g["id"], prompt
+                    )
+            test_res = st.session_state.get(f"grp_test_res_{g['id']}")
+            if test_res:
+                st.markdown(test_res)
 
 # --- Панель администратора ---
 elif page == "Панель администратора":
