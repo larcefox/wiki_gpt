@@ -100,6 +100,7 @@ class UserOut(BaseModel):
     email: EmailStr
     is_active: bool
     roles: List[str] = []
+    team_id: Optional[UUID] = None
 
     class Config:
         orm_mode = True
@@ -130,6 +131,42 @@ class RegisterResponse(BaseModel):
     team_id: UUID
     access_token: str
     refresh_token: str
+
+
+class TeamCreate(BaseModel):
+    name: str
+
+
+class TeamOut(BaseModel):
+    id: UUID
+    name: str
+
+    class Config:
+        orm_mode = True
+
+
+class TeamUserOut(BaseModel):
+    id: UUID
+    email: EmailStr
+
+    class Config:
+        orm_mode = True
+
+
+class TeamWithUsers(TeamOut):
+    users: List[TeamUserOut] = []
+
+
+class TeamInviteRequest(BaseModel):
+    email: EmailStr
+
+
+class TeamUserAction(BaseModel):
+    user_id: UUID
+
+
+class TeamSwitchRequest(BaseModel):
+    team_id: UUID
 
 
 ArticleGroupTreeNode.update_forward_refs()

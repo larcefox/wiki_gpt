@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text
 from db import get_db, SessionLocal, engine, wait_for_db
-from models import Article, ArticleVersion, ArticleGroup, Base, User, Role
+from models import Article, ArticleVersion, ArticleGroup, Base, User, Role, Team, UserTeam
 from auth import router as auth_router, require_roles, init_roles, check_admin_role, get_password_hash
 from qdrant_utils import (
     embed_text,
@@ -28,6 +28,12 @@ from schemas import (
     AdminUserOut,
     RoleUpdateRequest,
     PasswordResetRequest,
+    TeamCreate,
+    TeamOut,
+    TeamWithUsers,
+    TeamInviteRequest,
+    TeamUserAction,
+    TeamSwitchRequest,
 )
 
 wait_for_db()
@@ -74,10 +80,32 @@ ensure_columns()
 ensure_collection()
 init_roles()
 
+
+def ensure_user_team_memberships():
+    db = SessionLocal()
+    try:
+        users = db.query(User).all()
+        for u in users:
+            if u.team_id:
+                exists = (
+                    db.query(UserTeam)
+                    .filter_by(user_id=u.id, team_id=u.team_id)
+                    .first()
+                )
+                if not exists:
+                    db.add(UserTeam(user_id=u.id, team_id=u.team_id))
+        db.commit()
+    finally:
+        db.close()
+
+
+ensure_user_team_memberships()
+
 app = FastAPI()
 app.include_router(auth_router, prefix="/auth")
 
 admin_router = APIRouter(prefix="/admin")
+team_router = APIRouter(prefix="/teams")
 
 
 @admin_router.get("/users", response_model=List[AdminUserOut])
@@ -135,8 +163,96 @@ def reset_user_password(
     db.commit()
     return {"status": "ok"}
 
+@team_router.get("/", response_model=List[TeamOut])
+def list_my_teams(db: Session = Depends(get_db), current_user=Depends(require_roles(["reader"]))):
+    return current_user.teams
+
+
+@team_router.post("/", response_model=TeamOut)
+def create_team(
+    team: TeamCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
+    db_team = Team(name=team.name)
+    db.add(db_team)
+    db.flush()
+    db.add(UserTeam(user_id=current_user.id, team_id=db_team.id))
+    current_user.team_id = db_team.id
+    db.commit()
+    db.refresh(db_team)
+    return db_team
+
+
+@team_router.get("/{team_id}", response_model=TeamWithUsers)
+def get_team(
+    team_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team or team not in current_user.teams:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return TeamWithUsers(id=team.id, name=team.name, users=team.users)
+
+
+@team_router.post("/{team_id}/invite")
+def invite_user(
+    team_id: UUID,
+    req: TeamInviteRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team or team not in current_user.teams:
+        raise HTTPException(status_code=404, detail="Team not found")
+    user = db.query(User).filter(User.email == req.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if team not in user.teams:
+        db.add(UserTeam(user_id=user.id, team_id=team.id))
+        db.commit()
+    return {"status": "ok"}
+
+
+@team_router.post("/{team_id}/remove")
+def remove_user(
+    team_id: UUID,
+    req: TeamUserAction,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team or team not in current_user.teams:
+        raise HTTPException(status_code=404, detail="Team not found")
+    assoc = db.query(UserTeam).filter_by(user_id=req.user_id, team_id=team_id).first()
+    if not assoc:
+        raise HTTPException(status_code=404, detail="User not in team")
+    db.delete(assoc)
+    user = db.query(User).filter(User.id == req.user_id).first()
+    if user and user.team_id == team_id:
+        new_assoc = db.query(UserTeam).filter_by(user_id=req.user_id).first()
+        user.team_id = new_assoc.team_id if new_assoc else None
+    db.commit()
+    return {"status": "ok"}
+
+
+@team_router.post("/switch")
+def switch_team(
+    req: TeamSwitchRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
+    assoc = db.query(UserTeam).filter_by(user_id=current_user.id, team_id=req.team_id).first()
+    if not assoc:
+        raise HTTPException(status_code=403, detail="Not a member of team")
+    current_user.team_id = req.team_id
+    db.commit()
+    return {"status": "ok"}
+
 
 app.include_router(admin_router)
+app.include_router(team_router)
 
 
 @app.post("/article-groups/", response_model=ArticleGroupOut)

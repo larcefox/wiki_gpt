@@ -12,7 +12,7 @@ from collections import deque
 from uuid import UUID as UUID_cls
 
 from db import get_db, SessionLocal
-from models import User, Role, UserRole, Team
+from models import User, Role, UserRole, Team, UserTeam
 from schemas import (
     UserCreate,
     LoginRequest,
@@ -127,6 +127,10 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         team_id=team.id,
     )
     db.add(db_user)
+    db.flush()
+
+    # ensure membership in the created team
+    db.add(UserTeam(user_id=db_user.id, team_id=team.id))
     db.commit()
     db.refresh(db_user)
 
@@ -189,6 +193,7 @@ def me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         is_active=current_user.is_active,
         roles=[r.code for r in current_user.roles],
+        team_id=current_user.team_id,
     )
 
 
