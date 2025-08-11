@@ -604,6 +604,9 @@ elif page == "Редактировать статью":
         "Article ID", key="edit_article_id", on_change=_load_edit_article
     )
 
+    # If article ID was preset (e.g. from another page), load it automatically
+    _load_edit_article()
+
     title = st.text_input("Новый заголовок", key="edit_title")
     tags = st.text_input("Новые теги (через запятую)", key="edit_tags")
     st.selectbox(
@@ -718,6 +721,12 @@ elif page == "Статья по ID":
             st.subheader(article["title"])
             st.write(article["content"])
             st.caption(f"Теги: {', '.join(article.get('tags', []))}")
+            if "author" in roles or "admin" in roles:
+                if st.button("Редактировать"):
+                    st.session_state.edit_article_id = article["id"]
+                    st.session_state.pop("edit_loaded_id", None)
+                    st.session_state.page = "Редактировать статью"
+                    st.rerun()
             if st.button("Удалить статью"):
                 try:
                     delete_article(article["id"])
