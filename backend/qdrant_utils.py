@@ -26,7 +26,7 @@ VECTOR_SIZE = 256
 def get_yandex_embedding(text: str, token: str, folder_id: str) -> list[float]:
     url = YANDEX_API_URL
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Api-Key {token}",
         "Content-Type": "application/json"
     }
     payload = {
@@ -131,7 +131,7 @@ def rerank_with_llm(
 
     url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
     headers = {
-        "Authorization": f"Bearer {YANDEX_OAUTH_TOKEN}",
+        "Authorization": f"Api-Key {YANDEX_OAUTH_TOKEN}",
         "Content-Type": "application/json",
     }
 
@@ -175,7 +175,7 @@ def rerank_with_llm(
 
 def embed_text(text: str) -> list[float]:
     headers = {
-        "Authorization": f"Bearer {YANDEX_OAUTH_TOKEN}",
+        "Authorization": f"Api-Key {YANDEX_OAUTH_TOKEN}",
         "Content-Type": "application/json"
     }
     payload = {
