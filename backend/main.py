@@ -7,7 +7,7 @@ from uuid import UUID
 from typing import List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import inspect as sa_inspect, text
+from sqlalchemy import inspect as sa_inspect, text, or_
 from db import get_db, SessionLocal, engine, wait_for_db
 from models import Article, ArticleVersion, ArticleGroup, Base, User, Role, Team, UserTeam
 from auth import router as auth_router, require_roles, init_roles, check_admin_role, get_password_hash
@@ -28,6 +28,7 @@ from schemas import (
     ArticleSearchQuery,
     SearchAnswerRequest,
     SearchAnswerResponse,
+    ArticleListItem,
     ArticleGroupIn,
     ArticleGroupOut,
     ArticleGroupTreeNode,
@@ -492,6 +493,43 @@ def list_articles(
             content=a.content,
             tags=a.tags.split(",") if a.tags else [],
             group_id=a.group_id,
+        )
+        for a in articles
+    ]
+
+
+@app.get("/articles/list", response_model=List[ArticleListItem])
+def list_articles_brief(
+    limit: int = 50,
+    offset: int = 0,
+    q: Optional[str] = None,
+    tags: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(["reader"])),
+):
+    query = (
+        db.query(Article)
+        .filter(
+            Article.is_deleted == False,
+            Article.team_id == current_user.team_id,
+        )
+    )
+    if q:
+        ilike = f"%{q}%"
+        query = query.filter(or_(Article.title.ilike(ilike), Article.content.ilike(ilike)))
+    if tags:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        for t in tag_list:
+            query = query.filter(Article.tags.ilike(f"%{t}%"))
+    articles = (
+        query.order_by(Article.created_at.desc()).offset(offset).limit(limit).all()
+    )
+    return [
+        ArticleListItem(
+            id=a.id,
+            title=a.title,
+            tags=a.tags.split(",") if a.tags else [],
+            created_at=a.created_at.isoformat(),
         )
         for a in articles
     ]
