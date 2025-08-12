@@ -898,17 +898,11 @@ elif page == "Поиск":
             group_id = selected_group[0]
 
         answer = ""
-        sources: list[dict] = []
         try:
             data = search_answer(q.strip(), tag_list, group_id, topk)
             answer = data.get("answer", "")
-            sources = sorted(
-                data.get("sources", []),
-                key=lambda h: h.get("score", 0),
-                reverse=True,
-            )[:topk]
         except Exception as e:
-            st.warning(f"Не удалось получить резюме: {e}")
+            st.warning(f"Не удалось получить ответ: {e}")
 
         results: list[dict] = []
         try:
@@ -922,18 +916,8 @@ elif page == "Поиск":
             st.error(str(e))
 
         if answer:
-            st.subheader("Краткое резюме")
+            st.subheader("Ответ")
             st.markdown(answer, unsafe_allow_html=True)
-        if sources:
-            st.subheader("Источники")
-            for hit in sources:
-                st.markdown(f"**{hit['title']}**")
-                st.caption(
-                    f"ID: {hit['id']} · теги: {', '.join(hit.get('tags', []))}"
-                )
-                if st.button("Открыть статью", key=f"src_{hit['id']}"):
-                    open_article(hit["id"])
-                st.markdown("---")
         if results:
             st.subheader("Результаты поиска")
             for hit in results:

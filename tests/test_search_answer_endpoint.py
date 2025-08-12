@@ -80,7 +80,7 @@ def register(client: TestClient, email: str):
     return r.json()
 
 
-def test_search_answer_returns_sources(client: TestClient):
+def test_search_answer_returns_answer_without_sources(client: TestClient):
     user = register(client, "ans@example.com")
     token = user["access_token"]
 
@@ -91,7 +91,9 @@ def test_search_answer_returns_sources(client: TestClient):
     )
     assert r.status_code == 200
     data = r.json()
-    assert data["prompt_used"].startswith("Сделай краткое резюме")
-    assert len(data["sources"]) == 2
-    assert data["sources"][0]["title"] == "T1"
+    assert data["prompt_used"].startswith(
+        "Сделай краткое резюме ответа на запрос, опираясь только на выдержки"
+    )
+    assert "answer" in data
+    assert "sources" not in data
 
