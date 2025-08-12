@@ -833,6 +833,8 @@ def search_answer(
                 )
         except Exception as e:
             logger.warning("LLM summary failed: %s", e)
+    if not answer and snippets:
+        answer = "\n\n".join([f"{h.title}: {h.content}" for h in snippets])
 
     logger.info("search_answer q=%s snippets=%s", req.q, [h.id for h in snippets])
     return SearchAnswerResponse(

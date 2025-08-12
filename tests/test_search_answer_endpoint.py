@@ -94,6 +94,6 @@ def test_search_answer_returns_answer_without_sources(client: TestClient):
     assert data["prompt_used"].startswith(
         "Сделай краткое резюме ответа на запрос, опираясь только на выдержки"
     )
-    assert "answer" in data
+    assert data["answer"]
     assert "sources" not in data
 
