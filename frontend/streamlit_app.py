@@ -893,8 +893,11 @@ elif page == "Поиск":
                     st.session_state.view_id = hit["id"]
                     st.session_state.view_article = get_article(hit["id"])
                     st.session_state.view_history = get_history(hit["id"])
-                    st.session_state.pending_page = "Статья по ID"
-                    st.rerun()
+                    st.session_state.page = "Статья по ID"
+                    if hasattr(st, "rerun"):
+                        st.rerun()
+                    else:  # pragma: no cover - for older Streamlit versions
+                        st.experimental_rerun()
                 st.markdown("---")
         except Exception as e:
             st.error(str(e))
