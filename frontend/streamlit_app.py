@@ -882,12 +882,19 @@ elif page == "Поиск":
                 st.write(answer)
             st.subheader("Результаты")
             for hit in results:
-                link = f"{API_BASE}/articles/{hit['id']}"
                 st.markdown(f"**{hit['title']}**")
                 st.caption(
                     f"ID: {hit['id']} · теги: {', '.join(hit.get('tags', []))}"
                 )
-                st.write(f"[Открыть статью]({link})")
+                if st.button(
+                    "Открыть статью",
+                    key=f"open_{hit['id']}",
+                ):
+                    st.session_state.view_id = hit["id"]
+                    st.session_state.view_article = get_article(hit["id"])
+                    st.session_state.view_history = get_history(hit["id"])
+                    st.session_state.pending_page = "Статья по ID"
+                    st.rerun()
                 st.markdown("---")
         except Exception as e:
             st.error(str(e))
