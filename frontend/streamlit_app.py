@@ -879,7 +879,7 @@ elif page == "Поиск":
             )[:topk]
             if answer:
                 st.subheader("Ответ")
-                st.write(answer)
+                st.markdown(answer, unsafe_allow_html=True)
             st.subheader("Результаты")
             for hit in results:
                 st.markdown(f"**{hit['title']}**")
