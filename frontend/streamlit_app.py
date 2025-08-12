@@ -258,6 +258,22 @@ def build_group_options(
     return result
 
 
+def open_article(article_id: str) -> None:
+    """Load article into the view page and rerun the app."""
+    st.session_state.view_id = article_id
+    try:
+        st.session_state.view_article = get_article(article_id)
+        st.session_state.view_history = get_history(article_id)
+    except Exception:
+        st.session_state.view_article = None
+        st.session_state.view_history = None
+    st.session_state.page = "Статья по ID"
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:  # pragma: no cover - for older Streamlit versions
+        st.experimental_rerun()
+
+
 def fetch_group_options(include_none: str | None = None):
     groups = fetch_groups()
     return build_group_options(groups, include_none)
@@ -270,23 +286,9 @@ def render_sidebar_tree() -> None:
         tree = []
     st.sidebar.markdown("### Разделы")
 
-    def _open_article(art: dict) -> None:
-        st.session_state.view_id = art["id"]
-        try:
-            st.session_state.view_article = get_article(art["id"])
-            st.session_state.view_history = get_history(art["id"])
-        except Exception:
-            st.session_state.view_article = None
-            st.session_state.view_history = None
-        st.session_state.page = "Статья по ID"
-        if hasattr(st, "rerun"):
-            st.rerun()
-        else:  # pragma: no cover - for older Streamlit versions
-            st.experimental_rerun()
-
     def _article_button(art: dict) -> None:
         if st.button(art["title"], key=f"sb_{art['id']}"):
-            _open_article(art)
+            open_article(art["id"])
 
     def show(nodes: list[dict]) -> None:
         for node in nodes:
@@ -886,18 +888,16 @@ elif page == "Поиск":
                 st.caption(
                     f"ID: {hit['id']} · теги: {', '.join(hit.get('tags', []))}"
                 )
+                summary = hit.get("content", "").strip()
+                if summary:
+                    if len(summary) > 200:
+                        summary = summary[:200].rsplit(" ", 1)[0] + "..."
+                    st.markdown(summary, unsafe_allow_html=True)
                 if st.button(
                     "Открыть статью",
                     key=f"open_{hit['id']}",
                 ):
-                    st.session_state.view_id = hit["id"]
-                    st.session_state.view_article = get_article(hit["id"])
-                    st.session_state.view_history = get_history(hit["id"])
-                    st.session_state.page = "Статья по ID"
-                    if hasattr(st, "rerun"):
-                        st.rerun()
-                    else:  # pragma: no cover - for older Streamlit versions
-                        st.experimental_rerun()
+                    open_article(hit["id"])
                 st.markdown("---")
         except Exception as e:
             st.error(str(e))
