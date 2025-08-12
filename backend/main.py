@@ -732,6 +732,7 @@ def search_articles(
     hits = rerank_with_llm(
         query.q, hits, prompt_template=group_prompt, model=team_model
     )
+    hits.sort(key=lambda h: h.score, reverse=True)
     return hits
 
 
@@ -752,6 +753,7 @@ def search_answer(
     if req.tags:
         required = set(req.tags)
         hits = [h for h in hits if required.issubset(set(h.tags))]
+    hits.sort(key=lambda h: h.score, reverse=True)
     prompt = resolve_prompt(db, req.group_id)
     context = "\n\n".join(h.content for h in hits)
     answer = f"{req.q}\n{context}" if context else ""

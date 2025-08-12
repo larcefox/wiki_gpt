@@ -134,6 +134,20 @@ def search_articles(query: str, tags=None, group_id: str | None = None):
     return api_post("/articles/search/", payload)
 
 
+def search_answer(
+    query: str,
+    tags=None,
+    group_id: str | None = None,
+    top_k: int = 5,
+):
+    payload = {"q": query, "top_k": top_k}
+    if tags:
+        payload["tags"] = tags
+    if group_id:
+        payload["group_id"] = group_id
+    return api_post("/articles/search/answer", payload)
+
+
 def create_article(
     title: str,
     content: str,
@@ -856,12 +870,24 @@ elif page == "Поиск":
             group_id = None
             if isinstance(selected_group, tuple):
                 group_id = selected_group[0]
-            results = search_articles(q.strip(), tag_list, group_id)[:topk]
+            data = search_answer(q.strip(), tag_list, group_id, topk)
+            answer = data.get("answer", "")
+            results = sorted(
+                data.get("sources", []),
+                key=lambda h: h.get("score", 0),
+                reverse=True,
+            )[:topk]
+            if answer:
+                st.subheader("Ответ")
+                st.write(answer)
             st.subheader("Результаты")
             for hit in results:
-                st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
-                st.caption(f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}")
-                st.markdown(hit["content"], unsafe_allow_html=True)
+                link = f"{API_BASE}/articles/{hit['id']}"
+                st.markdown(f"**{hit['title']}**")
+                st.caption(
+                    f"ID: {hit['id']} · теги: {', '.join(hit.get('tags', []))}"
+                )
+                st.write(f"[Открыть статью]({link})")
                 st.markdown("---")
         except Exception as e:
             st.error(str(e))
