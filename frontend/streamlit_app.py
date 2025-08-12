@@ -2,6 +2,7 @@ import os
 import json
 import threading
 import logging
+import urllib.parse
 
 import requests
 import streamlit as st
@@ -186,6 +187,21 @@ def get_related_articles(article_id: str, limit: int = 5):
     return api_get(f"/articles/{article_id}/related?limit={limit}")
 
 
+def get_article_list(
+    limit: int = 50,
+    offset: int = 0,
+    q: str = "",
+    tags: list[str] | None = None,
+):
+    params = {"limit": limit, "offset": offset}
+    if q:
+        params["q"] = q
+    if tags:
+        params["tags"] = ",".join(tags)
+    query = urllib.parse.urlencode(params)
+    return api_get(f"/articles/list?{query}")
+
+
 def admin_list_users():
     return api_get("/admin/users")
 
@@ -300,8 +316,17 @@ def render_sidebar_tree() -> None:
     show(tree)
 
     try:
-        articles = api_get("/articles/")
-        ungrouped = [a for a in articles if not a.get("group_id")]
+        articles = get_article_list(limit=1000)
+        grouped_ids: set[str] = set()
+
+        def collect(nodes: list[dict]) -> None:
+            for n in nodes:
+                for art in n.get("articles", []):
+                    grouped_ids.add(art["id"])
+                collect(n.get("children", []))
+
+        collect(tree)
+        ungrouped = [a for a in articles if a["id"] not in grouped_ids]
     except Exception:
         ungrouped = []
     if ungrouped:
@@ -882,7 +907,9 @@ elif page == "Поиск":
             if answer:
                 st.subheader("Ответ")
                 st.markdown(answer, unsafe_allow_html=True)
-            st.subheader("Результаты")
+                st.subheader("Источники")
+            else:
+                st.subheader("Результаты")
             for hit in results:
                 st.markdown(f"**{hit['title']}**")
                 st.caption(
@@ -927,8 +954,16 @@ elif page == "Статья по ID":
                 st.subheader("Похожие статьи")
                 for hit in related:
                     st.write(f"**{hit['title']}** · score={hit.get('score'):.3f}")
-                    st.caption(f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}")
-                    st.markdown(hit["content"], unsafe_allow_html=True)
+                    st.caption(
+                        f"{hit['id']} · теги: {', '.join(hit.get('tags', []))}"
+                    )
+                    summary = hit.get("content", "").strip()
+                    if summary:
+                        if len(summary) > 200:
+                            summary = summary[:200].rsplit(" ", 1)[0] + "..."
+                        st.markdown(summary, unsafe_allow_html=True)
+                    if st.button("Открыть статью", key=f"rel_{hit['id']}"):
+                        open_article(hit["id"])
                     st.markdown("---")
             if "author" in roles or "admin" in roles:
                 if st.button("Редактировать"):

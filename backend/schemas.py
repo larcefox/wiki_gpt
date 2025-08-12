@@ -36,6 +36,16 @@ class ArticleSearchHit(BaseModel):
     group_id: Optional[UUID] = None
 
 
+class ArticleListItem(BaseModel):
+    id: UUID
+    title: str
+    tags: List[str] = []
+    created_at: str
+
+    class Config:
+        orm_mode = True
+
+
 class ArticleVersionOut(BaseModel):
     id: UUID
     article_id: UUID
