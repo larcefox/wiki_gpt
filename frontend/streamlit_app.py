@@ -892,24 +892,50 @@ elif page == "Поиск":
     )
     topk = st.slider("Сколько результатов показать", 1, 20, 5)
     if st.button("Искать") and q.strip():
+        tag_list = [t.strip() for t in tags_filter.split(",") if t.strip()]
+        group_id = None
+        if isinstance(selected_group, tuple):
+            group_id = selected_group[0]
+
+        answer = ""
+        sources: list[dict] = []
         try:
-            tag_list = [t.strip() for t in tags_filter.split(",") if t.strip()]
-            group_id = None
-            if isinstance(selected_group, tuple):
-                group_id = selected_group[0]
             data = search_answer(q.strip(), tag_list, group_id, topk)
             answer = data.get("answer", "")
-            results = sorted(
+            sources = sorted(
                 data.get("sources", []),
                 key=lambda h: h.get("score", 0),
                 reverse=True,
             )[:topk]
-            if answer:
-                st.subheader("Ответ")
-                st.markdown(answer, unsafe_allow_html=True)
-                st.subheader("Источники")
-            else:
-                st.subheader("Результаты")
+        except Exception as e:
+            st.warning(f"Не удалось получить резюме: {e}")
+
+        results: list[dict] = []
+        try:
+            results = search_articles(q.strip(), tag_list, group_id)
+            results = sorted(
+                results,
+                key=lambda h: h.get("score", 0),
+                reverse=True,
+            )[:topk]
+        except Exception as e:
+            st.error(str(e))
+
+        if answer:
+            st.subheader("Краткое резюме")
+            st.markdown(answer, unsafe_allow_html=True)
+        if sources:
+            st.subheader("Источники")
+            for hit in sources:
+                st.markdown(f"**{hit['title']}**")
+                st.caption(
+                    f"ID: {hit['id']} · теги: {', '.join(hit.get('tags', []))}"
+                )
+                if st.button("Открыть статью", key=f"src_{hit['id']}"):
+                    open_article(hit["id"])
+                st.markdown("---")
+        if results:
+            st.subheader("Результаты поиска")
             for hit in results:
                 st.markdown(f"**{hit['title']}**")
                 st.caption(
@@ -920,14 +946,9 @@ elif page == "Поиск":
                     if len(summary) > 200:
                         summary = summary[:200].rsplit(" ", 1)[0] + "..."
                     st.markdown(summary, unsafe_allow_html=True)
-                if st.button(
-                    "Открыть статью",
-                    key=f"open_{hit['id']}",
-                ):
+                if st.button("Открыть статью", key=f"res_{hit['id']}"):
                     open_article(hit["id"])
                 st.markdown("---")
-        except Exception as e:
-            st.error(str(e))
 
 # --- Статья по ID ---
 elif page == "Статья по ID":
