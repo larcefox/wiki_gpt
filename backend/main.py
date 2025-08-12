@@ -1,6 +1,7 @@
 import os
 import inspect
 import logging
+import requests
 from fastapi import Body, Depends, FastAPI, HTTPException, APIRouter, Response
 from uuid import UUID
 from typing import List, Optional
@@ -25,6 +26,8 @@ from schemas import (
     ArticleUpdate,
     ArticleVersionOut,
     ArticleSearchQuery,
+    SearchAnswerRequest,
+    SearchAnswerResponse,
     ArticleGroupIn,
     ArticleGroupOut,
     ArticleGroupTreeNode,
@@ -42,15 +45,8 @@ from schemas import (
 
 logger = logging.getLogger(__name__)
 
-
-class SearchAnswerRequest(ArticleSearchQuery):
-    top_k: int = 5
-
-
-class SearchAnswerResponse(BaseModel):
-    answer: str
-    sources: List[ArticleSearchHit]
-    prompt_used: str
+YANDEX_OAUTH_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
+YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
 
 wait_for_db()
 Base.metadata.create_all(bind=engine)
@@ -753,11 +749,63 @@ def search_answer(
     if req.tags:
         required = set(req.tags)
         hits = [h for h in hits if required.issubset(set(h.tags))]
+    group_prompt = resolve_prompt(db, req.group_id)
+    team_model = (
+        db.query(Team.llm_model)
+        .filter(Team.id == current_user.team_id)
+        .scalar()
+        or "yandexgpt-lite"
+    )
+    hits = rerank_with_llm(
+        req.q, hits, prompt_template=group_prompt, model=team_model
+    )
     hits.sort(key=lambda h: h.score, reverse=True)
-    prompt = resolve_prompt(db, req.group_id)
-    context = "\n\n".join(h.content for h in hits)
-    answer = f"{req.q}\n{context}" if context else ""
-    return SearchAnswerResponse(answer=answer, sources=hits, prompt_used=prompt)
+
+    snippets: List[ArticleSearchHit] = []
+    for h in hits:
+        snippet = h.content[:200]
+        snippets.append(ArticleSearchHit(**{**h.dict(), "content": snippet}))
+
+    parts = [f"[{h.title}](wiki://{h.id})\n{h.content}" for h in snippets]
+    context = "\n\n".join(parts)
+    base_prompt = (
+        "Сделай краткое резюме ответа на запрос, опираясь только на выдержки. "
+        "В конце дай список источников в формате [Заголовок](wiki://{id})."
+    )
+    prompt = f"{base_prompt}\n\nЗапрос: {req.q}\n\n{context}" if context else base_prompt
+
+    answer = ""
+    if context and YANDEX_OAUTH_TOKEN and YANDEX_FOLDER_ID:
+        url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+        headers = {
+            "Authorization": f"Api-Key {YANDEX_OAUTH_TOKEN}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "modelUri": f"gpt://{YANDEX_FOLDER_ID}/{team_model}/latest",
+            "completionOptions": {"stream": False, "temperature": 0.3, "maxTokens": 500},
+            "messages": [{"role": "user", "text": prompt}],
+        }
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=60)
+            if r.status_code == 200:
+                data = r.json()
+                alternatives = data.get("result", {}).get("alternatives") or data.get(
+                    "alternatives"
+                )
+                answer = (
+                    alternatives[0]["message"].get("text", "") if alternatives else ""
+                )
+        except Exception as e:
+            logger.warning("LLM summary failed: %s", e)
+
+    logger.info("search_answer q=%s sources=%s", req.q, [h.id for h in snippets])
+    return SearchAnswerResponse(
+        answer=answer,
+        sources=snippets,
+        prompt_used=prompt,
+        used_group_id=req.group_id,
+    )
 
 
 def save_version(article: Article, db: Session):
