@@ -161,6 +161,7 @@ class TeamOut(BaseModel):
     id: UUID
     name: str
     llm_model: str
+    base_prompt: str
 
     class Config:
         orm_mode = True
@@ -180,6 +181,10 @@ class TeamWithUsers(TeamOut):
 
 class TeamModelUpdate(BaseModel):
     llm_model: str
+
+
+class TeamPromptUpdate(BaseModel):
+    base_prompt: str
 
 
 class TeamInviteRequest(BaseModel):

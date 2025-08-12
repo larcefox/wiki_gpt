@@ -20,7 +20,7 @@ sys.modules["qdrant_utils"] = fake_qdrant
 from backend.main import app, Base, engine
 from backend.auth import init_roles
 from backend.db import SessionLocal
-from backend.models import User, Role, UserRole
+from backend.models import User, Role, UserRole, DEFAULT_BASE_PROMPT
 
 Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
@@ -123,3 +123,18 @@ def test_admin_panel():
     r = client.get("/admin/teams", headers=auth_headers(admin_token))
     team = next(t for t in r.json() if t["id"] == admin["team_id"])
     assert team["llm_model"] == "yandexgpt"
+    assert team["base_prompt"] == DEFAULT_BASE_PROMPT
+
+    # update team base prompt
+    new_prompt = "Новый базовый промпт"
+    r = client.post(
+        f"/admin/teams/{admin['team_id']}/prompt",
+        json={"base_prompt": new_prompt},
+        headers=auth_headers(admin_token),
+    )
+    assert r.status_code == 200
+
+    # verify base prompt updated
+    r = client.get("/admin/teams", headers=auth_headers(admin_token))
+    team = next(t for t in r.json() if t["id"] == admin["team_id"])
+    assert team["base_prompt"] == new_prompt
