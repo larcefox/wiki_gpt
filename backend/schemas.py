@@ -67,7 +67,6 @@ class SearchAnswerRequest(ArticleSearchQuery):
 
 class SearchAnswerResponse(BaseModel):
     answer: str
-    sources: List[ArticleSearchHit]
     prompt_used: str
     used_group_id: Optional[UUID] = None
 

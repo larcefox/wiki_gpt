@@ -806,10 +806,7 @@ def search_answer(
 
     parts = [f"[{h.title}](wiki://{h.id})\n{h.content}" for h in snippets]
     context = "\n\n".join(parts)
-    base_prompt = (
-        "Сделай краткое резюме ответа на запрос, опираясь только на выдержки. "
-        "В конце дай список источников в формате [Заголовок](wiki://{id})."
-    )
+    base_prompt = "Сделай краткое резюме ответа на запрос, опираясь только на выдержки."
     prompt = f"{base_prompt}\n\nЗапрос: {req.q}\n\n{context}" if context else base_prompt
 
     answer = ""
@@ -836,11 +833,12 @@ def search_answer(
                 )
         except Exception as e:
             logger.warning("LLM summary failed: %s", e)
+    if not answer and snippets:
+        answer = "\n\n".join([f"{h.title}: {h.content}" for h in snippets])
 
-    logger.info("search_answer q=%s sources=%s", req.q, [h.id for h in snippets])
+    logger.info("search_answer q=%s snippets=%s", req.q, [h.id for h in snippets])
     return SearchAnswerResponse(
         answer=answer,
-        sources=snippets,
         prompt_used=prompt,
         used_group_id=req.group_id,
     )
