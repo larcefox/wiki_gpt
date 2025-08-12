@@ -5,6 +5,11 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
 
+
+DEFAULT_BASE_PROMPT = (
+    "Сделай краткое резюме ответа на запрос, опираясь только на выдержки."
+)
+
 Base = declarative_base()
 
 
@@ -15,6 +20,7 @@ class Team(Base):
     name = Column(String, nullable=False, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     llm_model = Column(String, nullable=False, default="yandexgpt-lite")
+    base_prompt = Column(Text, nullable=False, default=DEFAULT_BASE_PROMPT)
 
     users = relationship("User", secondary="user_teams", back_populates="teams")
     articles = relationship("Article", back_populates="team")

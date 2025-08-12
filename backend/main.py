@@ -9,7 +9,17 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect as sa_inspect, text, or_
 from db import get_db, SessionLocal, engine, wait_for_db
-from models import Article, ArticleVersion, ArticleGroup, Base, User, Role, Team, UserTeam
+from models import (
+    Article,
+    ArticleVersion,
+    ArticleGroup,
+    Base,
+    User,
+    Role,
+    Team,
+    UserTeam,
+    DEFAULT_BASE_PROMPT,
+)
 from auth import router as auth_router, require_roles, init_roles, check_admin_role, get_password_hash
 from qdrant_utils import (
     embed_text,
@@ -42,6 +52,7 @@ from schemas import (
     TeamUserAction,
     TeamSwitchRequest,
     TeamModelUpdate,
+    TeamPromptUpdate,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +72,13 @@ def ensure_columns():
             conn.execute(
                 text(
                     "ALTER TABLE teams ADD COLUMN llm_model TEXT DEFAULT 'yandexgpt-lite'"
+                )
+            )
+        if "base_prompt" not in team_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE teams ADD COLUMN base_prompt TEXT DEFAULT "
+                    "'Сделай краткое резюме ответа на запрос, опираясь только на выдержки.'"
                 )
             )
 
@@ -226,6 +244,21 @@ def admin_update_team_model(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     team.llm_model = req.llm_model
+    db.commit()
+    return {"status": "ok"}
+
+
+@admin_router.post("/teams/{team_id}/prompt")
+def admin_update_team_prompt(
+    team_id: UUID,
+    req: TeamPromptUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(check_admin_role),
+):
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    team.base_prompt = req.base_prompt
     db.commit()
     return {"status": "ok"}
 
@@ -788,11 +821,13 @@ def search_answer(
         required = set(req.tags)
         hits = [h for h in hits if required.issubset(set(h.tags))]
     group_prompt = resolve_prompt(db, req.group_id)
-    team_model = (
-        db.query(Team.llm_model)
+    team_settings = (
+        db.query(Team.llm_model, Team.base_prompt)
         .filter(Team.id == current_user.team_id)
-        .scalar()
-        or "yandexgpt-lite"
+        .first()
+    )
+    team_model = (
+        team_settings[0] if team_settings and team_settings[0] else "yandexgpt-lite"
     )
     hits = rerank_with_llm(
         req.q, hits, prompt_template=group_prompt, model=team_model
@@ -806,8 +841,15 @@ def search_answer(
 
     parts = [f"[{h.title}](wiki://{h.id})\n{h.content}" for h in snippets]
     context = "\n\n".join(parts)
-    base_prompt = "Сделай краткое резюме ответа на запрос, опираясь только на выдержки."
-    prompt = f"{base_prompt}\n\nЗапрос: {req.q}\n\n{context}" if context else base_prompt
+    team_base_prompt = (
+        team_settings[1]
+        if team_settings and team_settings[1]
+        else DEFAULT_BASE_PROMPT
+    )
+    base_prompt = team_base_prompt
+    prompt = (
+        f"{base_prompt}\n\nЗапрос: {req.q}\n\n{context}" if context else base_prompt
+    )
 
     answer = ""
     if context and YANDEX_OAUTH_TOKEN and YANDEX_FOLDER_ID:
