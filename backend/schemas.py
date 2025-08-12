@@ -51,6 +51,17 @@ class ArticleSearchQuery(BaseModel):
     group_id: Optional[UUID] = None
 
 
+class SearchAnswerRequest(ArticleSearchQuery):
+    top_k: int = 5
+
+
+class SearchAnswerResponse(BaseModel):
+    answer: str
+    sources: List[ArticleSearchHit]
+    prompt_used: str
+    used_group_id: Optional[UUID] = None
+
+
 class ArticleGroupIn(BaseModel):
     name: str
     description: Optional[str] = None
