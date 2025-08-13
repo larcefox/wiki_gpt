@@ -224,12 +224,6 @@ def admin_update_team_model(team_id: str, llm_model: str):
     return api_post(f"/admin/teams/{team_id}/model", {"llm_model": llm_model})
 
 
-def admin_update_team_prompt(team_id: str, base_prompt: str):
-    return api_post(
-        f"/admin/teams/{team_id}/prompt", {"base_prompt": base_prompt}
-    )
-
-
 def list_my_teams():
     return api_get("/teams/")
 
@@ -1222,15 +1216,9 @@ elif page == "Панель администратора":
                 key=f"team_model_{t['id']}",
                 label_visibility="collapsed",
             )
-            prompt_val = st.text_area(
-                "Базовый промпт",
-                value=t.get("base_prompt", ""),
-                key=f"team_prompt_{t['id']}",
-            )
             if c3.button("Сохранить", key=f"team_save_{t['id']}"):
                 try:
                     admin_update_team_model(t["id"], model_sel)
-                    admin_update_team_prompt(t["id"], prompt_val)
                     st.success("Обновлено")
                     st.rerun()
                 except Exception as e:
