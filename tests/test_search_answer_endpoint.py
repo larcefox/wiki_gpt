@@ -92,8 +92,9 @@ def test_search_answer_returns_answer_without_sources(client: TestClient):
     assert r.status_code == 200
     data = r.json()
     assert data["prompt_used"].startswith(
-        "Сделай краткое резюме ответа на запрос, опираясь только на выдержки"
+        "Сформулируй единый и связный ответ на запрос пользователя"
     )
-    assert data["answer"]
+    assert "Ссылки на статьи" in data["answer"]
+    assert "- [T1](wiki://1)" in data["answer"]
     assert "sources" not in data
 
