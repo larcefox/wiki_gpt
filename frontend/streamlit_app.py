@@ -922,8 +922,12 @@ elif page == "Поиск":
             st.subheader("Результаты поиска")
             for hit in results:
                 st.markdown(f"**{hit['title']}**")
+                rating = hit.get("score")
+                rating_part = (
+                    f" · рейтинг: {rating:.2f}" if isinstance(rating, (int, float)) else ""
+                )
                 st.caption(
-                    f"ID: {hit['id']} · теги: {', '.join(hit.get('tags', []))}"
+                    f"ID: {hit['id']}{rating_part} · теги: {', '.join(hit.get('tags', []))}"
                 )
                 summary = hit.get("content", "").strip()
                 if summary:
